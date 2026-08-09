@@ -1,0 +1,27 @@
+# Shared proxy settings, included by every proxying location.
+
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+
+proxy_set_header Host              $host;
+proxy_set_header X-Real-IP         $remote_addr;
+# The application only trusts this header from TRUSTED_PROXY_CIDRS, so it must
+# be set here and must not be passed through from the client.
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Request-Id      $request_id_final;
+
+proxy_connect_timeout 5s;
+proxy_send_timeout    35s;
+# Slightly above the application's own 30s write timeout, so the application's
+# own timeout response wins rather than an opaque 504 from Nginx.
+proxy_read_timeout    35s;
+
+proxy_buffering    on;
+proxy_buffers      16 16k;
+proxy_buffer_size  16k;
+
+# A booking must never be silently retried against another replica: it is a
+# mutating call and the client owns the retry decision via Idempotency-Key.
+proxy_next_upstream error timeout;
+proxy_next_upstream_tries 1;

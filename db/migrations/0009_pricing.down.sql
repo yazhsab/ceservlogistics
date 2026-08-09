@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS tax_rules;
+DROP TABLE IF EXISTS discount_rules;
+DROP TABLE IF EXISTS surcharge_rules;
+DROP TABLE IF EXISTS weight_slabs;
+DROP TABLE IF EXISTS zone_rates;
+DROP FUNCTION IF EXISTS rate_card_child_guard();
+DROP TRIGGER IF EXISTS rate_card_versions_immutable ON rate_card_versions;
+DROP FUNCTION IF EXISTS rate_card_version_guard();
+DROP TABLE IF EXISTS rate_card_versions;
+DROP INDEX IF EXISTS business_accounts_rate_card_idx;
+ALTER TABLE business_accounts DROP COLUMN IF EXISTS rate_card_id;
+DROP TABLE IF EXISTS rate_cards;

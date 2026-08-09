@@ -1,0 +1,65 @@
+# Deployment simulation overlay.
+#
+# Runs the *production* compose file unmodified, supplying the two things a real
+# deployment gets from outside it: an S3-compatible object store and a TLS
+# certificate. Everything else — images, limits, read-only filesystems, health
+# gating, the migrate-before-api ordering — is exercised exactly as it ships.
+#
+#   docker compose -f deploy/docker-compose.prod.yml \
+#                  -f deploy/docker-compose.simulate.yml --env-file deploy/.env.simulate up -d
+#
+# The point of an overlay rather than a second compose file is that a simulation
+# which edits the thing it is simulating proves nothing. If a required variable
+# is missing, or migrate fails, or the API refuses its own configuration, this
+# stack fails in the same way production would.
+#
+# Not for production use: MinIO here is single-node with a well-known key, and
+# the certificate is self-signed.
+
+services:
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Creates the bucket the API expects. Runs once and exits, and the API waits
+  # for it — a bucket that does not exist is a failure at the first POD upload,
+  # which is exactly the kind of thing a deployment simulation should catch
+  # rather than discover in production.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY}" "$${STORAGE_SECRET_KEY}" &&
+        mc mb --ignore-existing local/"$${STORAGE_BUCKET}" &&
+        echo "bucket $${STORAGE_BUCKET} ready"
+    environment:
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
+    restart: "no"
+
+  api:
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully

@@ -1,0 +1,279 @@
+//go:build explain
+
+// Package perf captures query plans for the hot paths named in the Release 1
+// specification.
+//
+// Run with:
+//
+//	go test -tags explain ./tests/perf/ -run TestExplainHotQueries -v
+//
+// It seeds a representative dataset (19,000 postal codes, 40,000 shipments),
+// ANALYZEs, then records EXPLAIN (ANALYZE, BUFFERS) for each query into
+// docs/releases/explain-analyze.md. The build tag keeps it out of the normal
+// suite, because seeding takes a minute and the output is evidence rather than
+// an assertion.
+package perf
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ceserve/courier-os/tests/harness"
+)
+
+const evidencePath = "../../docs/releases/explain-analyze.md"
+
+func TestExplainHotQueries(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	geo := env.Geography(t)
+	tn := env.NewTenant(t, geo, harness.TenantOptions{Code: "PERF"})
+
+	seedVolume(t, env, tn, geo)
+
+	queries := []struct {
+		name string
+		why  string
+		sql  string
+		args []any
+	}{
+		{
+			name: "postal code lookup",
+			why:  "Runs at least twice per booking and once per serviceability check.",
+			sql: `SELECT p.id, p.public_id, p.code, p.is_remote, p.status, p.state_id,
+			         s.name AS state_name, c.name AS city_name
+			      FROM pincodes p
+			      JOIN states s ON s.id = p.state_id
+			      JOIN countries co ON co.id = p.country_id
+			      LEFT JOIN cities c ON c.id = p.city_id
+			      WHERE p.code = $1 AND co.iso2 = $2`,
+			args: []any{"100001", "NG"},
+		},
+		{
+			name: "Serviceability: resolve serving units",
+			why:  "The first step of every routing decision.",
+			sql: `SELECT sa.id, sa.priority, ou.code
+			      FROM service_areas sa
+			      JOIN operating_units ou ON ou.id = sa.operating_unit_id
+			      WHERE sa.organization_id = $1 AND sa.pincode_id = $2
+			        AND sa.status = 'ACTIVE' AND ou.status = 'ACTIVE'
+			        AND sa.area_type IN ('PICKUP','BOTH')
+			        AND sa.effective_from <= now()
+			      ORDER BY sa.priority DESC, sa.id
+			      LIMIT 10`,
+			args: []any{tn.OrgID, geo["pincode:100001"]},
+		},
+		{
+			name: "Shipment by AWB",
+			why:  "The tracking and operations console lookup.",
+			sql:  `SELECT id, public_id, current_status FROM shipments WHERE awb = $1 AND organization_id = $2`,
+			args: []any{firstAWB(t, env, tn.OrgID), tn.OrgID},
+		},
+		{
+			name: "Shipment list (keyset page 1)",
+			why:  "The operations console's default view.",
+			sql: `SELECT s.id, s.public_id, s.awb, s.current_status, s.created_at
+			      FROM shipments s
+			      WHERE s.organization_id = $1
+			      ORDER BY s.created_at DESC, s.id DESC
+			      LIMIT 26`,
+			args: []any{tn.OrgID},
+		},
+		{
+			name: "Shipment list (keyset, deep page)",
+			why:  "Proves keyset pagination does not degrade with depth, unlike OFFSET.",
+			sql: `SELECT s.id, s.public_id, s.awb, s.current_status, s.created_at
+			      FROM shipments s
+			      WHERE s.organization_id = $1
+			        AND (s.created_at, s.id) < ($2, $3)
+			      ORDER BY s.created_at DESC, s.id DESC
+			      LIMIT 26`,
+			args: deepCursor(t, env, tn.OrgID),
+		},
+		{
+			name: "Shipment list filtered by status",
+			why:  "The most common console filter.",
+			sql: `SELECT s.id, s.public_id, s.awb FROM shipments s
+			      WHERE s.organization_id = $1 AND s.current_status = ANY($2::text[])
+			      ORDER BY s.created_at DESC, s.id DESC LIMIT 26`,
+			args: []any{tn.OrgID, []string{"BOOKED"}},
+		},
+		{
+			name: "Pricing rule lookup (zone rate)",
+			why:  "The pricing engine's primary probe, on every quote and booking.",
+			sql: `SELECT id, base_price_minor, additional_price_minor FROM zone_rates
+			      WHERE rate_card_version_id = $1 AND courier_service_id = $2
+			        AND origin_zone_id = $3 AND destination_zone_id = $4`,
+			args: []any{tn.RateCardVersionID, tn.ServiceID, tn.ZoneLocalID, tn.ZoneNationalID},
+		},
+		{
+			name: "Pricing rule lookup (rate card resolution)",
+			why:  "Chooses which rate card applies before any rate is read.",
+			sql: `SELECT rc.id, v.id FROM rate_cards rc
+			      JOIN rate_card_versions v ON v.rate_card_id = rc.id
+			      WHERE rc.organization_id = $1 AND rc.status = 'ACTIVE' AND v.status = 'ACTIVE'
+			        AND v.effective_from <= now() AND (v.effective_to IS NULL OR v.effective_to > now())
+			        AND ((rc.scope = 'BUSINESS' AND rc.customer_id = $2) OR (rc.scope = 'RETAIL' AND rc.is_default))
+			      ORDER BY (CASE rc.scope WHEN 'BUSINESS' THEN 0 ELSE 2 END), rc.id
+			      LIMIT 1`,
+			args: []any{tn.OrgID, tn.CustomerID},
+		},
+		{
+			name: "Audit trail (keyset page)",
+			why:  "Compliance review over a high-volume append-only table.",
+			sql: `SELECT a.id, a.action, a.occurred_at FROM audit_events a
+			      WHERE a.organization_id = $1
+			      ORDER BY a.occurred_at DESC, a.id DESC LIMIT 26`,
+			args: []any{tn.OrgID},
+		},
+	}
+
+	var report strings.Builder
+	report.WriteString("# Release 1 — Query Plan Evidence\n\n")
+	report.WriteString("Generated by `go test -tags explain ./tests/perf/ -run TestExplainHotQueries`.\n\n")
+	fmt.Fprintf(&report, "Dataset: %s\n\n", describeDataset(t, env, tn.OrgID))
+	report.WriteString("Every plan below was captured with `EXPLAIN (ANALYZE, BUFFERS)` after `ANALYZE`.\n\n")
+
+	for _, q := range queries {
+		plan := explain(t, env, q.sql, q.args...)
+		fmt.Fprintf(&report, "## %s\n\n%s\n\n```sql\n%s\n```\n\n```\n%s\n```\n\n",
+			q.name, q.why, strings.TrimSpace(dedent(q.sql)), plan)
+
+		// A sequential scan on these paths is a release blocker, so it is
+		// asserted rather than merely reported.
+		if strings.Contains(plan, "Seq Scan on shipments") ||
+			strings.Contains(plan, "Seq Scan on pincodes") ||
+			strings.Contains(plan, "Seq Scan on audit_events") {
+			t.Errorf("%s falls back to a sequential scan on a high-volume table:\n%s", q.name, plan)
+		}
+		t.Logf("%s: %s", q.name, firstLine(plan))
+	}
+
+	if err := os.WriteFile(evidencePath, []byte(report.String()), 0o644); err != nil {
+		t.Fatalf("write evidence: %v", err)
+	}
+	t.Logf("wrote %s", evidencePath)
+}
+
+// seedVolume creates a dataset large enough for the planner to make realistic
+// choices. A few hundred rows would index-scan everything regardless.
+func seedVolume(t *testing.T, env *harness.Env, tn *harness.Tenant, geo map[string]int64) {
+	t.Helper()
+	ctx := context.Background()
+	start := time.Now()
+
+	// ~19,000 postal codes, matching the real India Post dataset size.
+	env.MustExec(t, `
+		INSERT INTO pincodes (public_id, country_id, code, state_id, is_remote, status)
+		SELECT 'pin_' || upper(substr(md5(g::text || 'perf'), 1, 26)),
+		       $1, lpad((110000 + g)::text, 6, '0'), $2, (g % 17 = 0), 'ACTIVE'
+		FROM generate_series(1, 19000) g
+		ON CONFLICT DO NOTHING`,
+		geo["country"], geo["state:Delhi"])
+
+	// ~40,000 shipments spread over 90 days, so the created_at index is
+	// selective and the deep-page test is meaningful.
+	env.MustExec(t, `
+		INSERT INTO shipments (
+			public_id, organization_id, awb, customer_id, courier_service_id,
+			payment_mode, current_status, status_changed_at, event_sequence,
+			origin_branch_id, destination_branch_id, origin_pincode, destination_pincode,
+			piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams,
+			currency, total_amount_minor, booked_at, content_description, created_at
+		)
+		SELECT 'shp_' || upper(substr(md5(g::text || 'perfship'), 1, 26)),
+		       $1, 'PRF' || to_char(now() - (g % 90) * interval '1 day', 'YYMMDD') || lpad(g::text, 6, '0'),
+		       $2, $3, 'PREPAID',
+		       (ARRAY['BOOKED','PICKED_UP','IN_TRANSIT','DELIVERED'])[1 + (g % 4)],
+		       now(), 1, $4, $5, '100001', '900001',
+		       1, 500, 600, 1000, 'NGN', 10488,
+		       now() - (g % 90) * interval '1 day', 'Perf seed',
+		       now() - (g % 90) * interval '1 day' - (g % 86400) * interval '1 second'
+		FROM generate_series(1, 40000) g`,
+		tn.OrgID, tn.CustomerID, tn.ServiceID, tn.OriginBranchID, tn.DestBranchID)
+
+	env.MustExec(t, `
+		INSERT INTO audit_events (public_id, organization_id, actor_type, action, resource_type, occurred_at)
+		SELECT 'aud_' || upper(substr(md5(g::text || 'perfaudit'), 1, 26)),
+		       $1, 'USER', 'shipment.booked', 'shipment',
+		       now() - (g % 90) * interval '1 day'
+		FROM generate_series(1, 40000) g`, tn.OrgID)
+
+	if _, err := env.DB.Pool.Exec(ctx, `ANALYZE`); err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	t.Logf("seeded performance dataset in %s", time.Since(start).Round(time.Millisecond))
+}
+
+func explain(t *testing.T, env *harness.Env, sql string, args ...any) string {
+	t.Helper()
+	rows, err := env.DB.Pool.Query(context.Background(),
+		"EXPLAIN (ANALYZE, BUFFERS) "+sql, args...)
+	if err != nil {
+		t.Fatalf("explain: %v\nsql: %s", err, sql)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+func firstAWB(t *testing.T, env *harness.Env, orgID int64) string {
+	t.Helper()
+	var awb string
+	if err := env.DB.Pool.QueryRow(context.Background(),
+		`SELECT awb FROM shipments WHERE organization_id = $1 LIMIT 1`, orgID).Scan(&awb); err != nil {
+		t.Fatalf("read an AWB: %v", err)
+	}
+	return awb
+}
+
+func deepCursor(t *testing.T, env *harness.Env, orgID int64) []any {
+	t.Helper()
+	var createdAt time.Time
+	var id int64
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT created_at, id FROM shipments WHERE organization_id = $1
+		ORDER BY created_at DESC, id DESC OFFSET 20000 LIMIT 1`, orgID).Scan(&createdAt, &id); err != nil {
+		t.Fatalf("read a deep cursor: %v", err)
+	}
+	return []any{orgID, createdAt, id}
+}
+
+func describeDataset(t *testing.T, env *harness.Env, orgID int64) string {
+	t.Helper()
+	var pincodes, shipments, audits int
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT (SELECT count(*)::int FROM pincodes),
+		       (SELECT count(*)::int FROM shipments WHERE organization_id = $1),
+		       (SELECT count(*)::int FROM audit_events WHERE organization_id = $1)`,
+		orgID).Scan(&pincodes, &shipments, &audits); err != nil {
+		t.Fatalf("describe dataset: %v", err)
+	}
+	return fmt.Sprintf("%d postal codes, %d shipments, %d audit events", pincodes, shipments, audits)
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func dedent(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimLeft(l, " \t")
+	}
+	return strings.Join(lines, "\n")
+}

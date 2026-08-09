@@ -1,0 +1,54 @@
+# Build context for the Go backend image.
+#
+# The Dockerfile does `COPY . .` into the build stage. Without this file the
+# daemon receives the whole repository — 292 MB, of which 280 MB is
+# web/node_modules that the Go build has no use for. That made a cold backend
+# build take minutes of pure context transfer.
+#
+# This is also the standing guard against baking a credential into a build
+# layer: anything matched here cannot reach the image even if someone later
+# leaves a secret in the working tree.
+
+# The frontend. Codex builds and ships it separately; the API image contains
+# only Go binaries.
+web/
+
+# VCS and CI metadata.
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Secrets and local environment. .env.example is a committed template with no
+# real values, but excluding the whole family is the safer default — an
+# allowlist for one file is not worth the risk of the next .env being missed.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+*credentials*
+
+# Test, coverage and profiling output.
+tests/load/results/
+coverage.out
+coverage.html
+*.test
+*.prof
+*.pprof
+
+# Documentation and design records. They belong in the repository, not in a
+# runtime image.
+docs/
+*.md
+!README.md
+
+# Local tooling and editor state.
+.vscode/
+.idea/
+.DS_Store
+.claude/
+bin/
+tmp/

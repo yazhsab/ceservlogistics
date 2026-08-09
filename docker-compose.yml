@@ -1,0 +1,123 @@
+# Local development stack.
+#
+# For the production deployment see deploy/docker-compose.prod.yml, which adds
+# Nginx, TLS, resource limits and log rotation.
+
+name: courier-os
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: courier
+      POSTGRES_PASSWORD: courier
+      POSTGRES_DB: courier_os
+    # Tuned for a development laptop. deploy/postgres/postgresql.prod.conf holds
+    # the 4 vCPU / 16 GB production settings.
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - log_min_duration_statement=500ms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U courier -d courier_os"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # Redis holds only cache, rate-limit counters and routing explanations, so
+    # it is capped and allowed to evict. Losing it costs latency, never data.
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/app/migrate", "up"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgres://courier:courier@postgres:5432/courier_os?sslmode=disable
+      JWT_SECRET: local-development-secret-not-for-production-use
+      LOG_FORMAT: text
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      HTTP_ADDR: :8080
+      DATABASE_URL: postgres://courier:courier@postgres:5432/courier_os?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: local-development-secret-not-for-production-use
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      # Compose networking means the API's peer is the bridge gateway, so the
+      # whole private range is trusted for X-Forwarded-For here. In production
+      # this is the Nginx address only.
+      TRUSTED_PROXY_CIDRS: 127.0.0.1/32,::1/128,172.16.0.0/12
+      METRICS_ADDR: 0.0.0.0:9090
+      LOG_FORMAT: text
+      LOG_LEVEL: debug
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/app/worker"]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgres://courier:courier@postgres:5432/courier_os?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: local-development-secret-not-for-production-use
+      WORKER_CONCURRENCY: "2"
+      ENABLE_METRICS: "false"
+      LOG_FORMAT: text
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

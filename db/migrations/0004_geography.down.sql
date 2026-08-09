@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS pincode_zone_mappings;
+DROP TABLE IF EXISTS zones;
+DROP TABLE IF EXISTS localities;
+DROP TABLE IF EXISTS pincodes;
+DROP TABLE IF EXISTS cities;
+DROP TABLE IF EXISTS districts;
+DROP TABLE IF EXISTS states;
+DROP TABLE IF EXISTS countries;

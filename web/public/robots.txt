@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /track
+Disallow: /admin/
+Disallow: /api/
+Disallow: /finance/
+Disallow: /forgot-password
+Disallow: /login
+Disallow: /operations/
+Disallow: /portal/
+Disallow: /reset-password

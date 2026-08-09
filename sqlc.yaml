@@ -1,0 +1,50 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "dbgen"
+        out: "internal/dbgen"
+        sql_package: "pgx/v5"
+        emit_json_tags: false
+        emit_prepared_queries: false
+        emit_interface: false
+        emit_exact_table_names: false
+        emit_empty_slices: true
+        # Nullable columns become Go pointers rather than pgtype wrappers, which
+        # keeps the mapping layer in each module readable.
+        emit_pointers_for_null_types: true
+        emit_result_struct_pointers: false
+        emit_params_struct_pointers: false
+        output_files_suffix: ".gen"
+        overrides:
+          # jsonb columns arrive as raw bytes and are decoded by the owning
+          # module into its own typed struct, rather than becoming an untyped
+          # map that would erase the schema of every metadata field.
+          - db_type: "pg_catalog.jsonb"
+            go_type:
+              type: "byte"
+              slice: true
+          - db_type: "pg_catalog.jsonb"
+            nullable: true
+            go_type:
+              type: "byte"
+              slice: true
+          # pgx v5 scans timestamptz/date straight into time.Time; using it
+          # directly keeps handlers and services free of pgtype wrappers.
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "date"
+            go_type: "time.Time"
+          - db_type: "date"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

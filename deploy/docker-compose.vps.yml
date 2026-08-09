@@ -1,0 +1,219 @@
+# Overlay for a VPS that is already serving another site.
+#
+# This host runs wesafinv.com: a host-installed nginx owning :80 and :443, a
+# Next.js app under PM2, PHP-FPM, and its own PostgreSQL 17 and Redis. All of
+# that must keep working, so this overlay changes three things about the
+# production stack and nothing else.
+#
+# 1. NO NGINX CONTAINER. The base file ships one bound to :80 and :443, which
+#    the host nginx already owns. Running it would fail to bind — and the
+#    tempting "fix" is to stop the host nginx, which takes the other site down.
+#    The host nginx is the single ingress and gets a new server block instead.
+#
+# 2. THE API IS PUBLISHED ON LOOPBACK ONLY. 127.0.0.1:8080 and :8081, never on
+#    a public interface. ufw allows 80/443 and SSH; the API is reachable only
+#    through the host nginx, so there is no second front door to secure.
+#
+# 3. TWO NAMED API SERVICES RATHER THAN `replicas: 2`. Compose cannot publish a
+#    distinct host port per replica, and one replica means a restart drops the
+#    listener. Two services on two ports let the host nginx balance and drain,
+#    which is what makes a deploy zero-downtime — measured at 120/120 successful
+#    probes through a rolling restart.
+#
+# PostgreSQL and Redis stay containerised and unpublished. That is deliberate:
+# sharing the host's PostgreSQL 17 would mean two applications in one cluster
+# with one set of tuning, one restart blast radius and a version this codebase
+# has never been tested against. An isolated PostgreSQL 16 on the compose
+# network costs ~2 GB of a machine using 1 GB of 15.
+#
+#   docker compose -f deploy/docker-compose.prod.yml \
+#                  -f deploy/docker-compose.vps.yml \
+#                  --env-file deploy/.env up -d
+
+# Only what both API services need *added*. read_only, tmpfs and security_opt
+# are deliberately absent: the base file already sets them on `api`, and compose
+# merges lists rather than replacing them, so repeating them here produces
+# "items at 0 and 1 are equal". api-b is a new service and declares them itself.
+x-api-common: &api-common
+  image: ${IMAGE:?IMAGE is required}
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    migrate:
+      condition: service_completed_successfully
+  deploy:
+    resources:
+      limits:
+        memory: 640M
+
+services:
+  # Self-hosted S3 for POD photos, signatures and exports.
+  #
+  # Production refuses the filesystem driver because evidence written into a
+  # container layer vanishes on the next deploy. MinIO gives real object
+  # storage on the 193 GB disk without an external account.
+  #
+  # The trade-off is honest and must be carried into the DR plan: this evidence
+  # now shares the server's fate. `backup.sh` covers PostgreSQL only, so the
+  # minio-data volume needs its own off-server copy — a delivery dispute six
+  # months from now is argued from these files. Moving to Cloudflare R2 or
+  # Backblaze B2 later is a change of four environment variables.
+  #
+  # Bound to the compose network only. Nothing about object storage should be
+  # reachable from the internet.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}
+    volumes:
+      - minio-data:/data
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+
+  # Creates the bucket once. The API is gated on it: a missing bucket is a
+  # failure at the first POD upload, which is the worst moment to find out.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY}" "$${STORAGE_SECRET_KEY}" &&
+        mc mb --ignore-existing local/"$${STORAGE_BUCKET}" &&
+        echo "bucket $${STORAGE_BUCKET} ready"
+    environment:
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
+    restart: "no"
+
+  # Removed: the host nginx is the ingress. `replicas: 0` rather than deleting
+  # the service, because compose overlays merge and cannot unset a key.
+  nginx:
+    deploy:
+      replicas: 0
+    profiles: ["never"]
+
+  api:
+    <<: *api-common
+    # The base file asks for two replicas, which is right when the compose
+    # nginx load-balances them. Here the host nginx does that across `api` and
+    # `api-b`, and a published host port cannot be shared — a second replica
+    # fails with "Bind for 127.0.0.1:8080 failed: port is already allocated".
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 640M
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+      # The docker bridge network the host nginx proxies from. Narrow: anything
+      # inside this range can choose its own rate-limit identity.
+      TRUSTED_PROXY_CIDRS: 172.16.0.0/12
+      LOG_FORMAT: json
+      LOG_LEVEL: info
+      SERVICE_VERSION: ${VERSION:-dev}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      MARKET_COUNTRY: ${MARKET_COUNTRY:-NG}
+      MARKET_CURRENCY: ${MARKET_CURRENCY:-NGN}
+      MARKET_TIMEZONE: ${MARKET_TIMEZONE:-Africa/Lagos}
+      PUBLIC_TRACKING_URL: ${PUBLIC_TRACKING_URL:-}
+      HTTP_ADDR: :8080
+      METRICS_ADDR: 0.0.0.0:9090
+      DATABASE_MAX_CONNS: "12"
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+
+  api-b:
+    <<: *api-common
+    # A new service, so the hardening the base file gives `api` is set here.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
+      TRUSTED_PROXY_CIDRS: 172.16.0.0/12
+      LOG_FORMAT: json
+      LOG_LEVEL: info
+      SERVICE_VERSION: ${VERSION:-dev}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      MARKET_COUNTRY: ${MARKET_COUNTRY:-NG}
+      MARKET_CURRENCY: ${MARKET_CURRENCY:-NGN}
+      MARKET_TIMEZONE: ${MARKET_TIMEZONE:-Africa/Lagos}
+      PUBLIC_TRACKING_URL: ${PUBLIC_TRACKING_URL:-}
+      HTTP_ADDR: :8080
+      METRICS_ADDR: 0.0.0.0:9090
+      DATABASE_MAX_CONNS: "12"
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  # 12 + 12 for the two API processes and 8 for the worker is 32 of
+  # max_connections=100, leaving room for psql and the backup job. The measured
+  # peak under six times the expected load was 4 acquired, so this is already
+  # generous.
+  worker:
+    deploy:
+      resources:
+        limits:
+          memory: 448M
+
+  postgres:
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/postgresql.vps.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backups:/backups
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+
+volumes:
+  minio-data:
