@@ -31,6 +31,7 @@ const (
 	TypeBooking             = "BOOKING"
 	TypePickup              = "PICKUP"
 	TypeOriginHandling      = "ORIGIN_HANDLING"
+	TypeTransitHandling     = "TRANSIT_HANDLING"
 	TypeDestinationHandling = "DESTINATION_HANDLING"
 	TypeDelivery            = "DELIVERY"
 	TypeCOD                 = "COD"
@@ -64,6 +65,7 @@ const (
 	RolePickupAgent          = "PICKUP_AGENT"
 	RoleDeliveryAgent        = "DELIVERY_AGENT"
 	RoleOriginUnit           = "ORIGIN_UNIT"
+	RoleTransitUnit          = "TRANSIT_UNIT"
 	RoleDestinationUnit      = "DESTINATION_UNIT"
 	RoleCustom               = "CUSTOM"
 )

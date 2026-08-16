@@ -27,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  ReceiptText,
   RotateCcw,
   Route,
   ScanLine,
@@ -191,10 +192,22 @@ const navigation: NavigationGroup[] = [
         permission: "pincode.read",
       },
       {
-        label: "Serviceability",
+        label: "Route planner",
         to: "/routing/tester",
         icon: Route,
         permission: "serviceability.check",
+      },
+      {
+        label: "Default routes",
+        to: "/routing/routes",
+        icon: MapPinned,
+        permission: "route.read",
+      },
+      {
+        label: "Route overrides",
+        to: "/routing/overrides",
+        icon: RotateCcw,
+        permission: "route.manage",
       },
     ],
   },
@@ -214,6 +227,12 @@ const navigation: NavigationGroup[] = [
         permission: "courier_service.read",
       },
       {
+        label: "Pricing masters",
+        to: "/pricing/masters",
+        icon: MapPinned,
+        permission: "rate_card.read",
+      },
+      {
         label: "Rate cards",
         to: "/pricing/rate-cards",
         icon: Banknote,
@@ -230,6 +249,12 @@ const navigation: NavigationGroup[] = [
   {
     label: "Finance",
     items: [
+      {
+        label: "Customer collections",
+        to: "/finance/collections",
+        icon: ReceiptText,
+        permission: "collection.read",
+      },
       {
         label: "Commission",
         to: "/finance/commission/rules",

@@ -1,0 +1,5 @@
+ALTER TABLE report_runs DROP CONSTRAINT report_runs_report_type_check;
+ALTER TABLE report_runs ADD CONSTRAINT report_runs_report_type_check CHECK (report_type IN (
+    'SHIPMENT_VOLUME','BRANCH_PERFORMANCE','FRANCHISE_PERFORMANCE','SERVICE_PERFORMANCE',
+    'SLA','NDR','RTO','COD_AGING','COMMISSION','SETTLEMENT','REVENUE','EXCEPTIONS'
+));

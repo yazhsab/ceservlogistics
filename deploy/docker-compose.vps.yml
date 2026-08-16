@@ -52,6 +52,16 @@ x-api-common: &api-common
         memory: 640M
 
 services:
+  # Static React application plus the standalone tracking HTML. It is reachable
+  # only by the host Nginx; the public internet never sees this port directly.
+  web:
+    ports:
+      - "127.0.0.1:8082:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
   # Self-hosted S3 for POD photos, signatures and exports.
   #
   # Production refuses the filesystem driver because evidence written into a

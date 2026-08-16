@@ -73,6 +73,7 @@ UPDATE settlements
        adjustments_minor = sqlc.arg('adjustments_minor'),
        tax_minor = sqlc.arg('tax_minor'),
        withholding_minor = sqlc.arg('withholding_minor'),
+       collections_minor = sqlc.arg('collections_minor'),
        opening_balance_minor = sqlc.arg('opening_balance_minor'),
        net_amount_minor = sqlc.arg('net_amount_minor'),
        calculation_hash = sqlc.arg('calculation_hash'),

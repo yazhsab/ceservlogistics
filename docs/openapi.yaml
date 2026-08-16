@@ -8677,6 +8677,62 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
+  /api/v1/franchise-collections:
+    get:
+      tags: [Finance]
+      operationId: listFranchiseCollections
+      summary: List prepaid payments collected by franchise counters
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [COLLECTED, IN_SETTLEMENT, REMITTED, DISPUTED, REVERSED] } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: Scoped collection register.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/FranchiseCollection' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Finance]
+      operationId: recordFranchiseCollection
+      summary: Record full payment for a prepaid franchise shipment
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shipmentId, amountMinor, paymentMode]
+              properties:
+                shipmentId: { type: string, pattern: '^shp_' }
+                amountMinor: { type: integer, format: int64, minimum: 1 }
+                paymentMode: { type: string, enum: [CASH, POS, TRANSFER, BANK_DEPOSIT] }
+                reference: { type: string, maxLength: 120 }
+                collectedAt: { type: string, format: date-time }
+                notes: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Collection recorded or replayed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [collection, replayed]
+                properties:
+                  collection: { $ref: '#/components/schemas/FranchiseCollection' }
+                  replayed: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -8902,6 +8958,29 @@ components:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
   schemas:
+    FranchiseCollection:
+      type: object
+      required: [publicId, shipmentId, franchiseId, operatingUnitId, amountMinor, currency, paymentMode, status, collectedAt]
+      properties:
+        publicId: { type: string, pattern: '^fcl_' }
+        shipmentId: { type: integer, format: int64 }
+        awb: { type: string }
+        franchiseId: { type: integer, format: int64 }
+        franchiseCode: { type: string }
+        franchiseName: { type: string }
+        operatingUnitId: { type: integer, format: int64 }
+        unitCode: { type: string }
+        amountMinor: { type: integer, format: int64 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        paymentMode: { type: string, enum: [CASH, POS, TRANSFER, BANK_DEPOSIT] }
+        reference: { type: string }
+        status: { type: string, enum: [COLLECTED, IN_SETTLEMENT, REMITTED, DISPUTED, REVERSED] }
+        collectedAt: { type: string, format: date-time }
+        collectedByName: { type: string }
+        settlementId: { type: integer, format: int64 }
+        remittedAt: { type: string, format: date-time }
+        notes: { type: string }
+
     Place:
       type: object
       description: |
@@ -12219,6 +12298,16 @@ components:
         location: { type: string, description: A city, never a facility name or code. }
         occurredAt: { type: string, format: date-time }
 
+    TrackingRouteNode:
+      type: object
+      description: A customer-safe planned or scan-discovered Nigeria transit point.
+      properties:
+        sequence: { type: integer }
+        location: { type: string, description: Facility display name without an internal identifier. }
+        nodeType: { type: string, enum: [ORIGIN, TRANSIT_POINT, DESTINATION, SCAN_DISCOVERED] }
+        status: { type: string, enum: [PLANNED, REACHED] }
+        reachedAt: { type: string, format: date-time }
+
     TrackingResult:
       type: object
       properties:
@@ -12247,6 +12336,7 @@ components:
         currency: { type: string }
         isReturning: { type: boolean }
         events: { type: array, items: { $ref: '#/components/schemas/TrackingEvent' } }
+        routeNodes: { type: array, items: { $ref: '#/components/schemas/TrackingRouteNode' } }
     LedgerAccount:
       type: object
       description: |
@@ -12421,7 +12511,7 @@ components:
 
     CommissionType:
       type: string
-      enum: [BOOKING, PICKUP, ORIGIN_HANDLING, DESTINATION_HANDLING, DELIVERY, COD, VOLUME_INCENTIVE, CUSTOM]
+      enum: [BOOKING, PICKUP, ORIGIN_HANDLING, TRANSIT_HANDLING, DESTINATION_HANDLING, DELIVERY, COD, VOLUME_INCENTIVE, CUSTOM]
 
     CommissionRule:
       type: object
@@ -12433,7 +12523,7 @@ components:
         code: { type: string, example: "DEL-GOLD" }
         name: { type: string }
         commissionType: { $ref: "#/components/schemas/CommissionType" }
-        recipientRole: { type: string, enum: [ORIGIN_FRANCHISE, DESTINATION_FRANCHISE, PICKUP_AGENT, DELIVERY_AGENT, ORIGIN_UNIT, DESTINATION_UNIT, CUSTOM] }
+        recipientRole: { type: string, enum: [ORIGIN_FRANCHISE, DESTINATION_FRANCHISE, PICKUP_AGENT, DELIVERY_AGENT, ORIGIN_UNIT, TRANSIT_UNIT, DESTINATION_UNIT, CUSTOM] }
         schemeCode: { type: string }
         franchiseId: { type: integer, nullable: true }
         franchiseCategory: { type: string, nullable: true }
@@ -12485,7 +12575,7 @@ components:
         code: { type: string }
         name: { type: string }
         commissionType: { $ref: "#/components/schemas/CommissionType" }
-        recipientRole: { type: string, enum: [ORIGIN_FRANCHISE, DESTINATION_FRANCHISE, PICKUP_AGENT, DELIVERY_AGENT, ORIGIN_UNIT, DESTINATION_UNIT, CUSTOM] }
+        recipientRole: { type: string, enum: [ORIGIN_FRANCHISE, DESTINATION_FRANCHISE, PICKUP_AGENT, DELIVERY_AGENT, ORIGIN_UNIT, TRANSIT_UNIT, DESTINATION_UNIT, CUSTOM] }
         franchiseId: { type: string, nullable: true }
         franchiseCategory: { type: string, nullable: true }
         serviceCode: { type: string, nullable: true }
@@ -13718,6 +13808,13 @@ components:
         - SETTLEMENT
         - REVENUE
         - EXCEPTIONS
+        - NIGERIA_VAT
+        - NIGERIA_WITHHOLDING_TAX
+        - PROFIT_AND_LOSS
+        - BALANCE_SHEET
+        - CASH_AND_BANK_BOOK
+        - RECEIVABLES_AGING
+        - FRANCHISE_COLLECTIONS
 
     ReportStatus:
       type: string

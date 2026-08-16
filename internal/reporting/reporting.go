@@ -70,18 +70,25 @@ const (
 
 // Report types.
 const (
-	TypeShipmentVolume     = "SHIPMENT_VOLUME"
-	TypeBranchPerformance  = "BRANCH_PERFORMANCE"
-	TypeFranchisePerf      = "FRANCHISE_PERFORMANCE"
-	TypeServicePerformance = "SERVICE_PERFORMANCE"
-	TypeSLA                = "SLA"
-	TypeNDR                = "NDR"
-	TypeRTO                = "RTO"
-	TypeCODAging           = "COD_AGING"
-	TypeCommission         = "COMMISSION"
-	TypeSettlement         = "SETTLEMENT"
-	TypeRevenue            = "REVENUE"
-	TypeExceptions         = "EXCEPTIONS"
+	TypeShipmentVolume      = "SHIPMENT_VOLUME"
+	TypeBranchPerformance   = "BRANCH_PERFORMANCE"
+	TypeFranchisePerf       = "FRANCHISE_PERFORMANCE"
+	TypeServicePerformance  = "SERVICE_PERFORMANCE"
+	TypeSLA                 = "SLA"
+	TypeNDR                 = "NDR"
+	TypeRTO                 = "RTO"
+	TypeCODAging            = "COD_AGING"
+	TypeCommission          = "COMMISSION"
+	TypeSettlement          = "SETTLEMENT"
+	TypeRevenue             = "REVENUE"
+	TypeExceptions          = "EXCEPTIONS"
+	TypeVAT                 = "NIGERIA_VAT"
+	TypeWithholdingTax      = "NIGERIA_WITHHOLDING_TAX"
+	TypeProfitLoss          = "PROFIT_AND_LOSS"
+	TypeBalanceSheet        = "BALANCE_SHEET"
+	TypeCashBook            = "CASH_AND_BANK_BOOK"
+	TypeReceivablesAging    = "RECEIVABLES_AGING"
+	TypeFranchiseCollection = "FRANCHISE_COLLECTIONS"
 )
 
 // AllTypes is the catalogue, matching the CHECK on report_runs.report_type.
@@ -89,6 +96,8 @@ var AllTypes = []string{
 	TypeShipmentVolume, TypeBranchPerformance, TypeFranchisePerf,
 	TypeServicePerformance, TypeSLA, TypeNDR, TypeRTO, TypeCODAging,
 	TypeCommission, TypeSettlement, TypeRevenue, TypeExceptions,
+	TypeVAT, TypeWithholdingTax, TypeProfitLoss, TypeBalanceSheet,
+	TypeCashBook, TypeReceivablesAging, TypeFranchiseCollection,
 }
 
 // financeTypes need report.finance on top of report.run.
@@ -97,6 +106,9 @@ var AllTypes = []string{
 // settlement figures are somebody's income and somebody else's liability.
 var financeTypes = map[string]bool{
 	TypeCommission: true, TypeSettlement: true, TypeRevenue: true, TypeCODAging: true,
+	TypeVAT: true, TypeWithholdingTax: true, TypeProfitLoss: true,
+	TypeBalanceSheet: true, TypeCashBook: true, TypeReceivablesAging: true,
+	TypeFranchiseCollection: true,
 }
 
 // RequiresFinance reports whether a type is gated behind report.finance.

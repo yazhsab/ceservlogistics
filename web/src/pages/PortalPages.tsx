@@ -5,6 +5,7 @@ import {
   Box,
   CircleAlert,
   FileText,
+  Globe2,
   HandCoins,
   Home,
   Landmark,
@@ -77,36 +78,75 @@ function AudienceShell({
   const audienceName =
     audience === "customer" ? "Customer portal" : "Franchise workspace";
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
+    <div className="min-h-screen bg-[#f5f3ef] text-slate-950">
       <a
         href="#portal-content"
         className="sr-only z-[100] rounded bg-white px-3 py-2 focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur">
+      <header
+        className={cn(
+          "sticky top-0 z-40 border-b backdrop-blur",
+          audience === "customer"
+            ? "border-white/10 bg-[#15243a]/95 text-white"
+            : "bg-white/95",
+        )}
+      >
         <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
           <Link
             to={`/portal/${audience}`}
             className="flex min-w-0 items-center gap-3"
           >
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary text-xs font-black text-white">
+            <span
+              className={cn(
+                "grid h-9 w-9 shrink-0 place-items-center rounded-md text-xs font-black text-white",
+                audience === "customer" ? "bg-[#f2673d]" : "bg-primary",
+              )}
+            >
               CS
             </span>
             <span className="min-w-0">
               <strong className="block truncate text-sm">
                 Ceserve Logistics
               </strong>
-              <span className="block truncate text-xs text-slate-500">
+              <span
+                className={cn(
+                  "block truncate text-xs",
+                  audience === "customer" ? "text-white/65" : "text-slate-500",
+                )}
+              >
                 {audienceName}
               </span>
             </span>
           </Link>
           <div className="flex items-center gap-2">
-            <span className="hidden max-w-48 truncate text-sm text-slate-600 sm:block">
+            {audience === "customer" ? (
+              <a
+                href="https://www.ceservlogistics.com/"
+                className="hidden items-center gap-2 text-sm font-semibold text-white/80 hover:text-white md:inline-flex"
+              >
+                <Globe2 aria-hidden className="h-4 w-4" /> Main website
+              </a>
+            ) : null}
+            <span
+              className={cn(
+                "hidden max-w-48 truncate text-sm sm:block",
+                audience === "customer" ? "text-white/70" : "text-slate-600",
+              )}
+            >
               {user?.fullName}
             </span>
-            <Button size="sm" variant="ghost" onClick={() => void logout()}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className={
+                audience === "customer"
+                  ? "text-white hover:bg-white/10"
+                  : undefined
+              }
+              onClick={() => void logout()}
+            >
               <LogOut aria-hidden className="h-4 w-4" /> Sign out
             </Button>
           </div>
@@ -134,8 +174,12 @@ function AudienceShell({
                       ? "min-w-0 flex-col gap-0.5 px-1 text-xs sm:flex-row sm:gap-2 sm:px-3 sm:text-sm"
                       : "shrink-0 gap-2 px-3 text-sm",
                     isActive
-                      ? "bg-emerald-50 text-primary"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+                      ? audience === "customer"
+                        ? "bg-[#f2673d] text-white"
+                        : "bg-emerald-50 text-primary"
+                      : audience === "customer"
+                        ? "text-white/70 hover:bg-white/10 hover:text-white"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
                   )
                 }
               >
@@ -599,7 +643,8 @@ export function CustomerShipmentsPage() {
                     className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline"
                     to={`/portal/customer/shipments/${shipment.id}`}
                   >
-                    Track shipment <ArrowRight aria-hidden className="ml-2 h-4 w-4" />
+                    Track shipment{" "}
+                    <ArrowRight aria-hidden className="ml-2 h-4 w-4" />
                   </Link>
                 </article>
               ))}

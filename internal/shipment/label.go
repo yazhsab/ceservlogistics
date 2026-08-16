@@ -160,7 +160,26 @@ func buildLabel(d dbgen.GetShipmentLabelDataRow, packages []dbgen.ShipmentPackag
 // counters print to Zebra-compatible hardware and a text payload is far cheaper
 // to generate and transmit than a rendered document.
 func renderZPL(l Label) string {
+	if len(l.Pieces) == 0 {
+		return renderZPLPiece(l, nil)
+	}
+	var out strings.Builder
+	for i := range l.Pieces {
+		out.WriteString(renderZPLPiece(l, &l.Pieces[i]))
+	}
+	return out.String()
+}
+
+func renderZPLPiece(l Label, piece *LabelPiece) string {
 	var b strings.Builder
+	barcode := l.BarcodePayload
+	pieceText := fmt.Sprintf("Pieces: %d", l.PieceCount)
+	qrPayload := l.QRPayload
+	if piece != nil {
+		barcode = piece.Barcode
+		pieceText = fmt.Sprintf("Piece %d of %d", piece.Sequence, l.PieceCount)
+		qrPayload += fmt.Sprintf("|%d|%s", piece.Sequence, piece.Barcode)
+	}
 	b.WriteString("^XA\n")
 	b.WriteString("^CI28\n") // UTF-8 input encoding
 	b.WriteString("^PW812\n^LL1218\n")
@@ -170,7 +189,7 @@ func renderZPL(l Label) string {
 		zplEscape(l.ServiceName), zplEscape(l.ServiceMode)))
 	b.WriteString("^FO20,110^GB772,3,3^FS\n")
 
-	b.WriteString(fmt.Sprintf("^FO20,130^BY3^BCN,140,Y,N,N^FD%s^FS\n", zplEscape(l.AWB)))
+	b.WriteString(fmt.Sprintf("^FO20,130^BY3^BCN,140,Y,N,N^FD%s^FS\n", zplEscape(barcode)))
 
 	b.WriteString(fmt.Sprintf("^FO20,310^A0N,60,60^FD%s^FS\n", zplEscape(l.RoutingCode)))
 	b.WriteString("^FO20,380^GB772,3,3^FS\n")
@@ -183,8 +202,8 @@ func renderZPL(l Label) string {
 	writeZPLParty(&b, 615, l.Recipient)
 
 	b.WriteString("^FO20,790^GB772,3,3^FS\n")
-	b.WriteString(fmt.Sprintf("^FO20,810^A0N,28,28^FDPieces: %d   Weight: %s^FS\n",
-		l.PieceCount, zplEscape(l.WeightLabel)))
+	b.WriteString(fmt.Sprintf("^FO20,810^A0N,28,28^FD%s   Weight: %s^FS\n",
+		zplEscape(pieceText), zplEscape(l.WeightLabel)))
 	b.WriteString(fmt.Sprintf("^FO20,850^A0N,28,28^FDPayment: %s^FS\n", zplEscape(l.PaymentMode)))
 	if l.CODAmountLabel != "" {
 		b.WriteString(fmt.Sprintf("^FO20,890^A0N,44,44^FDCOD %s^FS\n", zplEscape(l.CODAmountLabel)))
@@ -193,7 +212,7 @@ func renderZPL(l Label) string {
 		b.WriteString("^FO500,890^A0N,44,44^FDFRAGILE^FS\n")
 	}
 
-	b.WriteString(fmt.Sprintf("^FO560,950^BQN,2,6^FDLA,%s^FS\n", zplEscape(l.QRPayload)))
+	b.WriteString(fmt.Sprintf("^FO560,950^BQN,2,6^FDLA,%s^FS\n", zplEscape(qrPayload)))
 	b.WriteString(fmt.Sprintf("^FO20,960^A0N,24,24^FDBooked: %s^FS\n",
 		l.BookedAt.Format("2006-01-02 15:04")))
 	if l.PromisedDeliveryAt != nil {

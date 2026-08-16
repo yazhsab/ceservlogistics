@@ -79,6 +79,20 @@ func (s *Service) sourceFor(run dbgen.ReportRun) (*source, error) {
 		return s.commissionSource(), nil
 	case TypeNDR:
 		return s.ndrSource(), nil
+	case TypeVAT:
+		return s.vatSource(), nil
+	case TypeWithholdingTax:
+		return s.withholdingSource(), nil
+	case TypeProfitLoss:
+		return s.ledgerSummarySource([]string{"REVENUE", "EXPENSE"}), nil
+	case TypeBalanceSheet:
+		return s.ledgerSummarySource([]string{"ASSET", "LIABILITY", "EQUITY"}), nil
+	case TypeCashBook:
+		return s.cashBookSource(), nil
+	case TypeReceivablesAging:
+		return s.receivablesSource(), nil
+	case TypeFranchiseCollection:
+		return s.franchiseCollectionSource(), nil
 	default:
 		return nil, apierr.Validation("This report type has no data source.",
 			map[string]any{"reportType": run.ReportType})
@@ -282,6 +296,146 @@ func (s *Service) ndrSource() *source {
 			return out, nil
 		},
 	}
+}
+
+// Nigeria statutory and management finance exports. Amounts remain in minor
+// units so CSV consumers never lose kobo through floating-point conversion.
+func (s *Service) vatSource() *source {
+	return &source{header: []string{"invoiceNumber", "issueDate", "customer", "taxCode", "rateBasisPoints", "taxableMinor", "vatMinor", "currency"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		start, end := period(run)
+		rows, err := s.db.Pool.Query(ctx, `SELECT tc.id, i.invoice_number, i.issue_date, COALESCE(i.bill_to->>'name',''), tc.component_code, tc.rate_bp, tc.taxable_minor, tc.tax_minor, tc.currency FROM tax_components tc JOIN invoices i ON i.id=tc.invoice_id WHERE tc.organization_id=$1 AND tc.id>$2 AND i.issue_date >= $3 AND i.issue_date < $4 AND tc.component_code='VAT' ORDER BY tc.id LIMIT $5`, orgID, afterID, start, end, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id int64
+			var number, customer, code, currency string
+			var issue time.Time
+			var rate int32
+			var taxable, tax int64
+			if err := rows.Scan(&id, &number, &issue, &customer, &code, &rate, &taxable, &tax, &currency); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{number, issue.Format("2006-01-02"), customer, code, strconv.Itoa(int(rate)), minorString(taxable), minorString(tax), currency}})
+		}
+		return out, rows.Err()
+	}}
+}
+
+func (s *Service) withholdingSource() *source {
+	return &source{header: []string{"settlementNumber", "franchiseCode", "franchiseName", "periodStart", "periodEnd", "withholdingMinor", "currency", "status"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		start, end := period(run)
+		rows, err := s.db.Pool.Query(ctx, `SELECT s.id,s.settlement_number,f.code,f.name,s.period_start,s.period_end,s.withholding_minor,s.currency,s.status FROM settlements s JOIN franchises f ON f.id=s.franchise_id WHERE s.organization_id=$1 AND s.id>$2 AND s.period_end >= $3 AND s.period_start < $4 AND s.withholding_minor<>0 ORDER BY s.id LIMIT $5`, orgID, afterID, start, end, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id, amount int64
+			var number, code, name, currency, status string
+			var ps, pe time.Time
+			if err := rows.Scan(&id, &number, &code, &name, &ps, &pe, &amount, &currency, &status); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{number, code, name, ps.Format("2006-01-02"), pe.Format("2006-01-02"), minorString(amount), currency, status}})
+		}
+		return out, rows.Err()
+	}}
+}
+
+func (s *Service) ledgerSummarySource(types []string) *source {
+	return &source{header: []string{"accountCode", "accountName", "accountType", "debitMinor", "creditMinor", "normalBalanceMinor", "currency"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		start, end := period(run)
+		if len(types) > 0 && types[0] != "REVENUE" {
+			start = time.Unix(0, 0).UTC()
+		}
+		rows, err := s.db.Pool.Query(ctx, `SELECT a.id,a.code,a.name,a.account_type,COALESCE(SUM(e.debit_minor),0)::bigint,COALESCE(SUM(e.credit_minor),0)::bigint,CASE WHEN a.normal_balance='DEBIT' THEN COALESCE(SUM(e.debit_minor-e.credit_minor),0) ELSE COALESCE(SUM(e.credit_minor-e.debit_minor),0) END::bigint,a.currency FROM ledger_accounts a LEFT JOIN journal_entries e ON e.account_id=a.id AND EXISTS (SELECT 1 FROM journal_transactions j WHERE j.id=e.transaction_id AND j.status='POSTED' AND j.posting_date >= $3 AND j.posting_date < $4) WHERE a.organization_id=$1 AND a.id>$2 AND a.account_type=ANY($5::text[]) GROUP BY a.id ORDER BY a.id LIMIT $6`, orgID, afterID, start, end, types, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id, debit, credit, balance int64
+			var code, name, typ, currency string
+			if err := rows.Scan(&id, &code, &name, &typ, &debit, &credit, &balance, &currency); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{code, name, typ, minorString(debit), minorString(credit), minorString(balance), currency}})
+		}
+		return out, rows.Err()
+	}}
+}
+
+func (s *Service) cashBookSource() *source {
+	return &source{header: []string{"postingDate", "transactionNumber", "purpose", "description", "debitMinor", "creditMinor", "currency"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		start, end := period(run)
+		rows, err := s.db.Pool.Query(ctx, `SELECT e.id,j.posting_date,j.transaction_number,j.purpose,j.description,e.debit_minor,e.credit_minor,e.currency FROM journal_entries e JOIN journal_transactions j ON j.id=e.transaction_id JOIN ledger_accounts a ON a.id=e.account_id WHERE e.organization_id=$1 AND e.id>$2 AND j.status='POSTED' AND j.posting_date >= $3 AND j.posting_date < $4 AND a.code='1000' ORDER BY e.id LIMIT $5`, orgID, afterID, start, end, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id, debit, credit int64
+			var d time.Time
+			var no, purpose, desc, currency string
+			if err := rows.Scan(&id, &d, &no, &purpose, &desc, &debit, &credit, &currency); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{d.Format("2006-01-02"), no, purpose, desc, minorString(debit), minorString(credit), currency}})
+		}
+		return out, rows.Err()
+	}}
+}
+
+func (s *Service) receivablesSource() *source {
+	return &source{header: []string{"invoiceNumber", "customerCode", "customerName", "issueDate", "dueDate", "status", "totalMinor", "paidMinor", "creditedMinor", "outstandingMinor", "daysOverdue", "currency"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		_, end := period(run)
+		rows, err := s.db.Pool.Query(ctx, `SELECT i.id,i.invoice_number,c.code,c.name,i.issue_date,i.due_date,i.status,i.total_minor,i.paid_minor,i.credited_minor,(i.total_minor-i.paid_minor-i.credited_minor)::bigint,GREATEST(0,($3::date-i.due_date))::int,i.currency FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.organization_id=$1 AND i.id>$2 AND i.issue_date<$3 AND i.status NOT IN ('DRAFT','CANCELLED','PAID','WRITTEN_OFF') AND i.total_minor>i.paid_minor+i.credited_minor ORDER BY i.id LIMIT $4`, orgID, afterID, end, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id, total, paid, credited, outstanding int64
+			var days int32
+			var no, code, name, status, currency string
+			var issue, due time.Time
+			if err := rows.Scan(&id, &no, &code, &name, &issue, &due, &status, &total, &paid, &credited, &outstanding, &days, &currency); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{no, code, name, issue.Format("2006-01-02"), due.Format("2006-01-02"), status, minorString(total), minorString(paid), minorString(credited), minorString(outstanding), strconv.Itoa(int(days)), currency}})
+		}
+		return out, rows.Err()
+	}}
+}
+
+func (s *Service) franchiseCollectionSource() *source {
+	return &source{header: []string{"collectionId", "awb", "franchiseCode", "franchiseName", "amountMinor", "paymentMode", "reference", "status", "collectedAt", "remittedAt", "settlementNumber", "currency"}, fetch: func(ctx context.Context, orgID int64, run dbgen.ReportRun, afterID int64) ([]record, error) {
+		start, end := period(run)
+		rows, err := s.db.Pool.Query(ctx, `SELECT fc.id,fc.public_id,sh.awb,f.code,f.name,fc.amount_minor,fc.payment_mode,COALESCE(fc.reference,''),fc.status,fc.collected_at,fc.remitted_at,COALESCE(s.settlement_number,''),fc.currency FROM franchise_collections fc JOIN shipments sh ON sh.id=fc.shipment_id JOIN franchises f ON f.id=fc.franchise_id LEFT JOIN settlements s ON s.id=fc.settlement_id WHERE fc.organization_id=$1 AND fc.id>$2 AND fc.collected_at >= $3 AND fc.collected_at < $4 ORDER BY fc.id LIMIT $5`, orgID, afterID, start, end, chunkSize)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []record
+		for rows.Next() {
+			var id, amount int64
+			var publicID, awb, code, name, mode, ref, status, settlement, currency string
+			var collected time.Time
+			var remitted *time.Time
+			if err := rows.Scan(&id, &publicID, &awb, &code, &name, &amount, &mode, &ref, &status, &collected, &remitted, &settlement, &currency); err != nil {
+				return nil, err
+			}
+			out = append(out, record{id: id, fields: []string{publicID, awb, code, name, minorString(amount), mode, ref, status, collected.UTC().Format(time.RFC3339), timeString(remitted), settlement, currency}})
+		}
+		return out, rows.Err()
+	}}
 }
 
 // Ensure dateString stays referenced while report types that use it are added.

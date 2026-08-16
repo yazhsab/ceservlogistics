@@ -58,6 +58,8 @@ type QuoteInput struct {
 	OriginZoneCode string
 	DestZoneID     int64
 	DestZoneCode   string
+	OriginStateID  int64
+	DestStateID    int64
 
 	Packages []Package
 
@@ -393,14 +395,41 @@ func (e *Engine) computeFreight(
 	}
 
 	if !haveZoneRate {
-		return 0, LineItem{}, apierr.Validation(
-			"No rate is configured for this lane on the active rate card.",
-			map[string]any{
-				"code":        "RATE_NOT_CONFIGURED",
-				"serviceCode": in.Service.Code,
-				"originZone":  in.OriginZoneCode,
-				"destZone":    in.DestZoneCode,
-			})
+		var stateRate struct {
+			PublicID, StateName    string
+			BaseWeight, StepWeight int32
+			BaseCost, StepCost     int64
+		}
+		err := e.db.Pool.QueryRow(ctx, `
+			SELECT r.public_id, s.name, r.base_weight_grams, r.base_cost_minor,
+			       r.additional_step_grams, r.additional_cost_minor
+			  FROM state_base_rates r JOIN states s ON s.id=r.state_id
+			 WHERE r.organization_id=$1 AND r.state_id=$2 AND r.is_active
+			   AND (r.courier_service_id=$3 OR r.courier_service_id IS NULL)
+			 ORDER BY (r.courier_service_id IS NOT NULL) DESC LIMIT 1`,
+			in.OrganizationID, in.DestStateID, in.Service.ID).Scan(
+			&stateRate.PublicID, &stateRate.StateName, &stateRate.BaseWeight,
+			&stateRate.BaseCost, &stateRate.StepWeight, &stateRate.StepCost)
+		if err == nil {
+			amount := stateRate.BaseCost
+			explanation := fmt.Sprintf("%s state base cost for %dg at %s", stateRate.StateName,
+				stateRate.BaseWeight, formatMinor(stateRate.BaseCost, in.Currency))
+			if chargeable > stateRate.BaseWeight {
+				excess := int64(chargeable - stateRate.BaseWeight)
+				steps := (excess + int64(stateRate.StepWeight) - 1) / int64(stateRate.StepWeight)
+				amount += money.ApplyPerUnit(stateRate.StepCost, steps)
+				explanation += fmt.Sprintf(" plus %d additional weight step(s)", steps)
+			}
+			return amount, LineItem{Kind: KindFreight, Code: "STATE_BASE_FREIGHT",
+				Label: "State base freight", AmountMinor: amount, RuleID: stateRate.PublicID,
+				Explanation: explanation}, nil
+		}
+		if !database.IsNoRows(err) {
+			return 0, LineItem{}, apierr.Internal(fmt.Errorf("find state base rate: %w", err))
+		}
+		return 0, LineItem{}, apierr.Validation("No rate is configured for this lane or destination state.",
+			map[string]any{"code": "RATE_NOT_CONFIGURED", "serviceCode": in.Service.Code,
+				"originZone": in.OriginZoneCode, "destZone": in.DestZoneCode})
 	}
 
 	amount := zoneRate.BasePriceMinor

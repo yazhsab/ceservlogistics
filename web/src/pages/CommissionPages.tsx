@@ -48,6 +48,7 @@ const commissionTypes = [
   "BOOKING",
   "PICKUP",
   "ORIGIN_HANDLING",
+  "TRANSIT_HANDLING",
   "DESTINATION_HANDLING",
   "DELIVERY",
   "COD",
@@ -60,6 +61,7 @@ const recipientRoles = [
   "PICKUP_AGENT",
   "DELIVERY_AGENT",
   "ORIGIN_UNIT",
+  "TRANSIT_UNIT",
   "DESTINATION_UNIT",
   "CUSTOM",
 ] as const;

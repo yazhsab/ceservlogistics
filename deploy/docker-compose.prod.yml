@@ -50,6 +50,23 @@ x-logging: &logging
     max-file: "5"
 
 services:
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE is required}
+    expose:
+      - "8080"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -198,10 +215,12 @@ services:
       # the entire ingress down, not just one route. Found by the deployment
       # simulation; it had never been started as a stack before.
       - ./nginx/proxy_params_courier:/etc/nginx/proxy_params_courier:ro
+      - ./nginx/tls_courier:/etc/nginx/tls_courier:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - certbot-webroot:/var/www/certbot:ro
     depends_on:
       - api
+      - web
     deploy:
       resources:
         limits:

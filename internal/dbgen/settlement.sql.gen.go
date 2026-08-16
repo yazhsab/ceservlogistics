@@ -43,13 +43,14 @@ UPDATE settlements
        adjustments_minor = $6,
        tax_minor = $7,
        withholding_minor = $8,
-       opening_balance_minor = $9,
-       net_amount_minor = $10,
-       calculation_hash = $11,
-       calculated_at = now(), calculated_by = $12
- WHERE organization_id = $13 AND id = $14
+       collections_minor = $9,
+       opening_balance_minor = $10,
+       net_amount_minor = $11,
+       calculation_hash = $12,
+       calculated_at = now(), calculated_by = $13
+ WHERE organization_id = $14 AND id = $15
    AND status IN ('DRAFT','CALCULATED')
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type ApplySettlementTotalsParams struct {
@@ -61,6 +62,7 @@ type ApplySettlementTotalsParams struct {
 	AdjustmentsMinor    int64
 	TaxMinor            int64
 	WithholdingMinor    int64
+	CollectionsMinor    int64
 	OpeningBalanceMinor int64
 	NetAmountMinor      int64
 	CalculationHash     *string
@@ -81,6 +83,7 @@ func (q *Queries) ApplySettlementTotals(ctx context.Context, arg ApplySettlement
 		arg.AdjustmentsMinor,
 		arg.TaxMinor,
 		arg.WithholdingMinor,
+		arg.CollectionsMinor,
 		arg.OpeningBalanceMinor,
 		arg.NetAmountMinor,
 		arg.CalculationHash,
@@ -128,6 +131,7 @@ func (q *Queries) ApplySettlementTotals(ctx context.Context, arg ApplySettlement
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -139,7 +143,7 @@ UPDATE settlements
  WHERE organization_id = $3 AND id = $4
    AND status IN ('CALCULATED','UNDER_REVIEW')
    AND (calculated_by IS NULL OR calculated_by <> $1)
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type ApproveSettlementParams struct {
@@ -198,6 +202,7 @@ func (q *Queries) ApproveSettlement(ctx context.Context, arg ApproveSettlementPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -247,7 +252,7 @@ UPDATE settlements
    SET status = 'CANCELLED', cancelled_at = now(), cancel_reason = $3
  WHERE organization_id = $1 AND id = $2
    AND status IN ('DRAFT','CALCULATED','UNDER_REVIEW')
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type CancelSettlementParams struct {
@@ -299,6 +304,7 @@ func (q *Queries) CancelSettlement(ctx context.Context, arg CancelSettlementPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -307,7 +313,7 @@ const closeSettlement = `-- name: CloseSettlement :one
 UPDATE settlements
    SET status = 'CLOSED', closed_at = now()
  WHERE organization_id = $1 AND id = $2 AND status = 'PAID'
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type CloseSettlementParams struct {
@@ -357,6 +363,7 @@ func (q *Queries) CloseSettlement(ctx context.Context, arg CloseSettlementParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -389,7 +396,7 @@ INSERT INTO settlements (
     period_type, period_start, period_end, status, currency,
     opening_balance_minor, created_by, request_id, notes
 ) VALUES ($1,$2,$3,$4,$5,$6,$7,'DRAFT',$8,$9,$10,$11,$12)
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type CreateSettlementParams struct {
@@ -476,6 +483,7 @@ func (q *Queries) CreateSettlement(ctx context.Context, arg CreateSettlementPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -691,7 +699,7 @@ func (q *Queries) DeleteSettlementLines(ctx context.Context, settlementID int64)
 }
 
 const findSettlementForPeriod = `-- name: FindSettlementForPeriod :one
-SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version FROM settlements
+SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor FROM settlements
 WHERE organization_id = $1 AND franchise_id = $2
   AND period_start = $3 AND period_end = $4
   AND status <> 'CANCELLED'
@@ -753,6 +761,7 @@ func (q *Queries) FindSettlementForPeriod(ctx context.Context, arg FindSettlemen
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -853,7 +862,7 @@ func (q *Queries) GetSettlementAdjustmentByPublicID(ctx context.Context, arg Get
 }
 
 const getSettlementByID = `-- name: GetSettlementByID :one
-SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version FROM settlements WHERE organization_id = $1 AND id = $2
+SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor FROM settlements WHERE organization_id = $1 AND id = $2
 `
 
 type GetSettlementByIDParams struct {
@@ -903,12 +912,13 @@ func (q *Queries) GetSettlementByID(ctx context.Context, arg GetSettlementByIDPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
 
 const getSettlementByPublicID = `-- name: GetSettlementByPublicID :one
-SELECT s.id, s.public_id, s.organization_id, s.settlement_number, s.franchise_id, s.period_type, s.period_start, s.period_end, s.status, s.currency, s.commission_minor, s.incentive_minor, s.cod_liability_minor, s.charges_minor, s.penalties_minor, s.adjustments_minor, s.tax_minor, s.withholding_minor, s.opening_balance_minor, s.net_amount_minor, s.paid_minor, s.calculation_hash, s.calculated_at, s.calculated_by, s.submitted_at, s.submitted_by, s.approved_at, s.approved_by, s.closed_at, s.cancelled_at, s.cancel_reason, s.journal_transaction_id, s.notes, s.request_id, s.created_by, s.created_at, s.updated_at, s.version, f.code AS franchise_code, f.name AS franchise_name,
+SELECT s.id, s.public_id, s.organization_id, s.settlement_number, s.franchise_id, s.period_type, s.period_start, s.period_end, s.status, s.currency, s.commission_minor, s.incentive_minor, s.cod_liability_minor, s.charges_minor, s.penalties_minor, s.adjustments_minor, s.tax_minor, s.withholding_minor, s.opening_balance_minor, s.net_amount_minor, s.paid_minor, s.calculation_hash, s.calculated_at, s.calculated_by, s.submitted_at, s.submitted_by, s.approved_at, s.approved_by, s.closed_at, s.cancelled_at, s.cancel_reason, s.journal_transaction_id, s.notes, s.request_id, s.created_by, s.created_at, s.updated_at, s.version, s.collections_minor, f.code AS franchise_code, f.name AS franchise_name,
        cu.full_name AS calculated_by_name, au.full_name AS approved_by_name
 FROM settlements s
 JOIN franchises f ON f.id = s.franchise_id
@@ -961,6 +971,7 @@ type GetSettlementByPublicIDRow struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	Version              int32
+	CollectionsMinor     int64
 	FranchiseCode        string
 	FranchiseName        string
 	CalculatedByName     *string
@@ -1009,6 +1020,7 @@ func (q *Queries) GetSettlementByPublicID(ctx context.Context, arg GetSettlement
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 		&i.FranchiseCode,
 		&i.FranchiseName,
 		&i.CalculatedByName,
@@ -1416,7 +1428,7 @@ func (q *Queries) ListSettlementPayments(ctx context.Context, settlementID int64
 }
 
 const listSettlements = `-- name: ListSettlements :many
-SELECT s.id, s.public_id, s.organization_id, s.settlement_number, s.franchise_id, s.period_type, s.period_start, s.period_end, s.status, s.currency, s.commission_minor, s.incentive_minor, s.cod_liability_minor, s.charges_minor, s.penalties_minor, s.adjustments_minor, s.tax_minor, s.withholding_minor, s.opening_balance_minor, s.net_amount_minor, s.paid_minor, s.calculation_hash, s.calculated_at, s.calculated_by, s.submitted_at, s.submitted_by, s.approved_at, s.approved_by, s.closed_at, s.cancelled_at, s.cancel_reason, s.journal_transaction_id, s.notes, s.request_id, s.created_by, s.created_at, s.updated_at, s.version, f.code AS franchise_code, f.name AS franchise_name
+SELECT s.id, s.public_id, s.organization_id, s.settlement_number, s.franchise_id, s.period_type, s.period_start, s.period_end, s.status, s.currency, s.commission_minor, s.incentive_minor, s.cod_liability_minor, s.charges_minor, s.penalties_minor, s.adjustments_minor, s.tax_minor, s.withholding_minor, s.opening_balance_minor, s.net_amount_minor, s.paid_minor, s.calculation_hash, s.calculated_at, s.calculated_by, s.submitted_at, s.submitted_by, s.approved_at, s.approved_by, s.closed_at, s.cancelled_at, s.cancel_reason, s.journal_transaction_id, s.notes, s.request_id, s.created_by, s.created_at, s.updated_at, s.version, s.collections_minor, f.code AS franchise_code, f.name AS franchise_name
 FROM settlements s
 JOIN franchises f ON f.id = s.franchise_id
 WHERE s.organization_id = $1
@@ -1478,6 +1490,7 @@ type ListSettlementsRow struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	Version              int32
+	CollectionsMinor     int64
 	FranchiseCode        string
 	FranchiseName        string
 }
@@ -1538,6 +1551,7 @@ func (q *Queries) ListSettlements(ctx context.Context, arg ListSettlementsParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Version,
+			&i.CollectionsMinor,
 			&i.FranchiseCode,
 			&i.FranchiseName,
 		); err != nil {
@@ -1552,7 +1566,7 @@ func (q *Queries) ListSettlements(ctx context.Context, arg ListSettlementsParams
 }
 
 const lockSettlement = `-- name: LockSettlement :one
-SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version FROM settlements WHERE organization_id = $1 AND id = $2 FOR UPDATE
+SELECT id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor FROM settlements WHERE organization_id = $1 AND id = $2 FOR UPDATE
 `
 
 type LockSettlementParams struct {
@@ -1604,6 +1618,7 @@ func (q *Queries) LockSettlement(ctx context.Context, arg LockSettlementParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -1708,7 +1723,7 @@ UPDATE settlements
        END
  WHERE organization_id = $2 AND id = $3
    AND status IN ('APPROVED','PARTIALLY_PAID')
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type RecordSettlementPaidParams struct {
@@ -1761,6 +1776,7 @@ func (q *Queries) RecordSettlementPaid(ctx context.Context, arg RecordSettlement
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -1769,7 +1785,7 @@ const rejectSettlement = `-- name: RejectSettlement :one
 UPDATE settlements
    SET status = 'CALCULATED', submitted_at = NULL, submitted_by = NULL
  WHERE organization_id = $1 AND id = $2 AND status = 'UNDER_REVIEW'
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type RejectSettlementParams struct {
@@ -1820,6 +1836,7 @@ func (q *Queries) RejectSettlement(ctx context.Context, arg RejectSettlementPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }
@@ -1881,7 +1898,7 @@ const submitSettlement = `-- name: SubmitSettlement :one
 UPDATE settlements
    SET status = 'UNDER_REVIEW', submitted_at = now(), submitted_by = $3
  WHERE organization_id = $1 AND id = $2 AND status = 'CALCULATED'
-RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version
+RETURNING id, public_id, organization_id, settlement_number, franchise_id, period_type, period_start, period_end, status, currency, commission_minor, incentive_minor, cod_liability_minor, charges_minor, penalties_minor, adjustments_minor, tax_minor, withholding_minor, opening_balance_minor, net_amount_minor, paid_minor, calculation_hash, calculated_at, calculated_by, submitted_at, submitted_by, approved_at, approved_by, closed_at, cancelled_at, cancel_reason, journal_transaction_id, notes, request_id, created_by, created_at, updated_at, version, collections_minor
 `
 
 type SubmitSettlementParams struct {
@@ -1932,6 +1949,7 @@ func (q *Queries) SubmitSettlement(ctx context.Context, arg SubmitSettlementPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
+		&i.CollectionsMinor,
 	)
 	return i, err
 }

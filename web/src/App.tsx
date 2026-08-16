@@ -12,6 +12,7 @@ import {
 
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const OrganizationPage = lazy(() => import("./pages/OrganizationPage"));
+const FranchiseCollectionsPage = lazy(() => import("./pages/CollectionPages"));
 const UsersPage = lazy(() =>
   import("./pages/AdminPages").then((module) => ({
     default: module.UsersPage,
@@ -97,6 +98,7 @@ const RateCardsPage = lazy(() =>
     default: module.RateCardsPage,
   })),
 );
+const PricingMastersPage = lazy(() => import("./pages/PricingMasterPages"));
 const RateCardDetailPage = lazy(() =>
   import("./pages/PricingPages").then((module) => ({
     default: module.RateCardDetailPage,
@@ -820,6 +822,14 @@ export default function App() {
             }
           />
           <Route
+            path="finance/collections"
+            element={
+              <Permission permission="collection.read">
+                <FranchiseCollectionsPage />
+              </Permission>
+            }
+          />
+          <Route
             path="finance/commission/simulator"
             element={
               <Permission permission="commission.simulate">
@@ -1136,6 +1146,14 @@ export default function App() {
             element={
               <Permission permission="pricing.quote">
                 <PricingSimulatorPage />
+              </Permission>
+            }
+          />
+          <Route
+            path="pricing/masters"
+            element={
+              <Permission permission="rate_card.read">
+                <PricingMastersPage />
               </Permission>
             }
           />

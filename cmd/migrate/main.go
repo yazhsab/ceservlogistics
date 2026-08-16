@@ -151,6 +151,10 @@ func run() error {
 		fmt.Printf("  organization  %s\n", result.OrganizationCode)
 		fmt.Printf("  email         %s\n", result.AdminEmail)
 		fmt.Printf("  password      %s\n", result.AdminPassword)
+		fmt.Printf("\n  Role logins (same development-only password):\n")
+		for _, account := range result.Accounts {
+			fmt.Printf("  %-28s %s\n", account.Role, account.Email)
+		}
 		fmt.Printf("  customerId    %s\n", result.CustomerPublicID)
 		fmt.Printf("  serviceCode   %s\n", result.ServiceCode)
 		fmt.Printf("  lane          %s -> %s\n\n", result.OriginPincode, result.DestPincode)

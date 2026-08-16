@@ -42,10 +42,12 @@ POSTGRES_DB=courier_os
 DATABASE_URL=postgres://courier:<password>@postgres:5432/courier_os?sslmode=disable
 
 # Full origins only. A wildcard is refused in production.
-CORS_ALLOWED_ORIGINS=https://app.yourdomain.com
+CORS_ALLOWED_ORIGINS=https://app.ceservlogistics.com,https://customer.ceservlogistics.com,https://track.ceservlogistics.com
 
 IMAGE=ghcr.io/yourorg/courier-os:1.0.0
+WEB_IMAGE=ghcr.io/yourorg/courier-os-web:1.0.0
 VERSION=1.0.0
+PUBLIC_TRACKING_URL=https://track.ceservlogistics.com/
 ```
 
 The configuration layer validates everything at startup and refuses to run with
@@ -63,11 +65,15 @@ supply a CA.
 
 ```bash
 sudo apt install -y certbot
-sudo certbot certonly --standalone -d api.yourdomain.com
+sudo certbot certonly --standalone \
+  -d api.ceservlogistics.com \
+  -d app.ceservlogistics.com \
+  -d customer.ceservlogistics.com \
+  -d track.ceservlogistics.com
 
 sudo mkdir -p /opt/courier-os/nginx/certs
-sudo cp /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem /opt/courier-os/nginx/certs/
-sudo cp /etc/letsencrypt/live/api.yourdomain.com/privkey.pem   /opt/courier-os/nginx/certs/
+sudo cp /etc/letsencrypt/live/api.ceservlogistics.com/fullchain.pem /opt/courier-os/nginx/certs/
+sudo cp /etc/letsencrypt/live/api.ceservlogistics.com/privkey.pem   /opt/courier-os/nginx/certs/
 ```
 
 Renewal, with a reload rather than a restart so connections are not dropped:
@@ -75,12 +81,24 @@ Renewal, with a reload rather than a restart so connections are not dropped:
 ```bash
 sudo crontab -e
 0 3 * * 1 certbot renew --quiet --deploy-hook \
-  'cp /etc/letsencrypt/live/api.yourdomain.com/*.pem /opt/courier-os/nginx/certs/ && \
+  'cp /etc/letsencrypt/live/api.ceservlogistics.com/*.pem /opt/courier-os/nginx/certs/ && \
    docker compose -f /opt/courier-os/docker-compose.prod.yml exec nginx nginx -s reload'
 ```
 
 Verify with `curl -vI https://api.yourdomain.com/livez` and check the grade at
 ssllabs.com. TLS 1.0 and 1.1 are disabled; HSTS is set for 180 days.
+
+Create four DNS `A` records, all pointing to the production VPS public IP:
+
+| Host | Purpose |
+|---|---|
+| `app.ceservlogistics.com` | Staff and franchise application |
+| `customer.ceservlogistics.com` | Customer self-service portal |
+| `track.ceservlogistics.com` | Standalone public AWB tracking |
+| `api.ceservlogistics.com` | Go API |
+
+The canonical domain is `ceservlogistics.com` (without the extra `i` in
+`logisitics`). The public website already uses this spelling.
 
 ---
 

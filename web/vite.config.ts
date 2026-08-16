@@ -6,9 +6,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/api": "http://127.0.0.1:8080",
-      "/livez": "http://127.0.0.1:8080",
-      "/readyz": "http://127.0.0.1:8080",
+      "/api": "http://127.0.0.1:8081",
+      "/livez": "http://127.0.0.1:8081",
+      "/readyz": "http://127.0.0.1:8081",
     },
   },
   build: {

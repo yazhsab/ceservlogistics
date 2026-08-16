@@ -93,8 +93,8 @@ export function ServiceabilityPage() {
     <>
       <PageHeader
         eyebrow="Network / Routing"
-        title="Serviceability tester"
-        description="Confirm coverage, resolved facilities, route path, restrictions, and customer promise before booking."
+        title="Route planner"
+        description="Plan the default Nigeria route, review every transit node, and confirm the customer promise before booking. Authorized overrides are managed from Route overrides."
       />
       <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
         <Panel className="h-fit">

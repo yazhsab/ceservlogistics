@@ -67,12 +67,7 @@ import {
   TableCell,
   TableHead,
 } from "../components/ui";
-import {
-  cn,
-  formatDateTime,
-  safeDownloadName,
-  titleCase,
-} from "../lib/utils";
+import { cn, formatDateTime, safeDownloadName, titleCase } from "../lib/utils";
 
 function lagosDate(offsetDays = 0) {
   const date = new Date(Date.now() + offsetDays * 86_400_000);
@@ -738,7 +733,20 @@ const reportGroups: Array<{
   },
   { name: "SLA", types: ["SLA"], icon: Clock3 },
   { name: "Franchise", types: ["FRANCHISE_PERFORMANCE"], icon: Building2 },
-  { name: "Finance", types: ["REVENUE"], icon: Landmark },
+  {
+    name: "Nigeria finance",
+    types: [
+      "REVENUE",
+      "NIGERIA_VAT",
+      "NIGERIA_WITHHOLDING_TAX",
+      "PROFIT_AND_LOSS",
+      "BALANCE_SHEET",
+      "CASH_AND_BANK_BOOK",
+      "RECEIVABLES_AGING",
+      "FRANCHISE_COLLECTIONS",
+    ],
+    icon: Landmark,
+  },
   { name: "COD", types: ["COD_AGING"], icon: WalletCards },
   { name: "Commission", types: ["COMMISSION"], icon: HandCoins },
   { name: "Settlement", types: ["SETTLEMENT"], icon: FileText },

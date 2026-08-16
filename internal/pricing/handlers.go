@@ -39,6 +39,10 @@ func NewHandler(e *Engine, q *dbgen.Queries, geo *geography.Service, prod *produ
 // Routes mounts pricing endpoints under /pricing.
 func (h *Handler) Routes(r chi.Router) {
 	r.With(auth.RequirePermission("pricing.quote")).Post("/quote", httpx.Wrap(h.quote))
+	r.With(auth.RequirePermission("rate_card.read")).Get("/state-base-rates", httpx.Wrap(h.listStateBaseRates))
+	r.With(auth.RequirePermission("rate_card.manage")).Post("/state-base-rates", httpx.Wrap(h.upsertStateBaseRate))
+	r.With(auth.RequirePermission("rate_card.read")).Get("/package-types", httpx.Wrap(h.listPackageTypes))
+	r.With(auth.RequirePermission("rate_card.manage")).Post("/package-types", httpx.Wrap(h.upsertPackageType))
 }
 
 // PaymentModes is the accepted payment-mode enum.
@@ -180,6 +184,7 @@ func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req 
 		Service:        svc,
 		OriginZoneID:   originZone.ZoneID, OriginZoneCode: originZone.ZoneCode,
 		DestZoneID: destZone.ZoneID, DestZoneCode: destZone.ZoneCode,
+		OriginStateID: origin.StateID, DestStateID: dest.StateID,
 		Packages:           req.toPackages(),
 		PaymentMode:        paymentMode,
 		DeclaredValueMinor: req.DeclaredValueMinor,

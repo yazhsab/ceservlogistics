@@ -117,7 +117,10 @@ SELECT s.awb,
        s.cod_amount_minor,
        s.currency,
        s.payment_mode,
+       s.route_definition_id,
        sv.name AS service_name,
+       origin_unit.name AS origin_unit_name,
+       dest_unit.name AS destination_unit_name,
        -- City-level only: a street address must not be readable from an AWB.
        origin_city.name AS origin_city,
        dest_city.name AS destination_city,
@@ -127,10 +130,12 @@ SELECT s.awb,
        s.organization_id
 FROM shipments s
 JOIN courier_services sv ON sv.id = s.courier_service_id
+LEFT JOIN operating_units origin_unit ON origin_unit.id = s.origin_branch_id
+LEFT JOIN operating_units dest_unit ON dest_unit.id = s.destination_branch_id
 -- City names come through the PIN code, which is keyed by country. The
 -- platform is single-country per deployment (§M03), so the join resolves the
 -- country by its ISO code rather than assuming an id.
-LEFT JOIN countries ctry ON ctry.iso2 = 'IN'
+LEFT JOIN countries ctry ON ctry.iso2 = 'NG'
 LEFT JOIN pincodes op ON op.code = s.origin_pincode AND op.country_id = ctry.id
 LEFT JOIN cities origin_city ON origin_city.id = op.city_id
 LEFT JOIN pincodes dp ON dp.code = s.destination_pincode AND dp.country_id = ctry.id
@@ -146,14 +151,14 @@ SELECT e.event_type,
        e.from_status,
        e.occurred_at,
        e.description,
-       e.location_pincode,
+       COALESCE(e.location_pincode, ou.pincode) AS location_pincode,
        ou.name AS location_name,
        ou.unit_type AS location_type,
        city.name AS location_city
 FROM shipment_events e
 LEFT JOIN operating_units ou ON ou.id = e.operating_unit_id
-LEFT JOIN countries ctry ON ctry.iso2 = 'IN'
-LEFT JOIN pincodes p ON p.code = e.location_pincode AND p.country_id = ctry.id
+LEFT JOIN countries ctry ON ctry.iso2 = 'NG'
+LEFT JOIN pincodes p ON p.code = COALESCE(e.location_pincode, ou.pincode) AND p.country_id = ctry.id
 LEFT JOIN cities city ON city.id = p.city_id
 WHERE e.shipment_id = sqlc.arg('shipment_id')
   -- Status changes and milestones only; internal remarks never surface.

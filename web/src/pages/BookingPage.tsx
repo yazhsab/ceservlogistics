@@ -124,6 +124,15 @@ interface Preview {
   serviceability: ServiceabilityResult;
   quote?: Quote;
 }
+type PackageTypePreset = {
+  id: string;
+  code: string;
+  name: string;
+  lengthMm: number;
+  widthMm: number;
+  heightMm: number;
+  maxWeightGrams?: number;
+};
 
 const sections = [
   { id: "sender", label: "Sender", icon: UserRound },
@@ -215,6 +224,13 @@ export default function BookingPage() {
         "/api/v1/courier-services?status=ACTIVE&limit=100",
       ),
     staleTime: 5 * 60_000,
+  });
+  const packageTypes = useQuery({
+    queryKey: ["package-types", "booking"],
+    queryFn: () =>
+      apiRequest<{ data: PackageTypePreset[] }>(
+        "/api/v1/pricing/package-types",
+      ),
   });
 
   useEffect(() => {
@@ -651,6 +667,44 @@ export default function BookingPage() {
                       ) : null}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-6">
+                      <Field
+                        label="Package type"
+                        htmlFor={`package-${index}-type`}
+                        className="sm:col-span-2"
+                      >
+                        <Select
+                          id={`package-${index}-type`}
+                          defaultValue=""
+                          onChange={(event) => {
+                            const preset = packageTypes.data?.data.find(
+                              (item) => item.id === event.target.value,
+                            );
+                            if (!preset) return;
+                            setValue(
+                              `packages.${index}.lengthMm`,
+                              preset.lengthMm || undefined,
+                              { shouldDirty: true },
+                            );
+                            setValue(
+                              `packages.${index}.widthMm`,
+                              preset.widthMm || undefined,
+                              { shouldDirty: true },
+                            );
+                            setValue(
+                              `packages.${index}.heightMm`,
+                              preset.heightMm || undefined,
+                              { shouldDirty: true },
+                            );
+                          }}
+                        >
+                          <option value="">Custom dimensions</option>
+                          {packageTypes.data?.data.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
                       <Field
                         label="Reference"
                         htmlFor={`package-${index}-reference`}

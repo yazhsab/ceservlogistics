@@ -104,51 +104,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/version": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Build information */
-    get: {
-      parameters: {
-        query?: never;
-        header?: never;
-        path?: never;
-        cookie?: never;
-      };
-      requestBody?: never;
-      responses: {
-        /** @description Build and environment details. */
-        200: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            "application/json": {
-              service?: string;
-              version?: string;
-              commit?: string;
-              builtAt?: string;
-              /** @enum {string} */
-              environment?: "development" | "test" | "staging" | "production";
-              /** @constant */
-              apiVersion?: "v1";
-            };
-          };
-        };
-      };
-    };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -4070,7 +4025,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups": {
+  "/api/v1/pickups": {
     parameters: {
       query?: never;
       header?: never;
@@ -4100,7 +4055,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/{pickupId}": {
+  "/api/v1/pickups/{pickupId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4122,7 +4077,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/{pickupId}/assign": {
+  "/api/v1/pickups/{pickupId}/assign": {
     parameters: {
       query?: never;
       header?: never;
@@ -4144,7 +4099,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/{pickupId}/complete": {
+  "/api/v1/pickups/{pickupId}/complete": {
     parameters: {
       query?: never;
       header?: never;
@@ -4168,7 +4123,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/{pickupId}/cancel": {
+  "/api/v1/pickups/{pickupId}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -4190,7 +4145,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/my-stops": {
+  "/api/v1/pickups/my-stops": {
     parameters: {
       query?: never;
       header?: never;
@@ -4212,7 +4167,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/assignments/{assignmentId}/respond": {
+  "/api/v1/pickups/assignments/{assignmentId}/respond": {
     parameters: {
       query?: never;
       header?: never;
@@ -4234,7 +4189,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickups/assignments/{assignmentId}/arrive": {
+  "/api/v1/pickups/assignments/{assignmentId}/arrive": {
     parameters: {
       query?: never;
       header?: never;
@@ -4256,7 +4211,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pickup-runs": {
+  "/api/v1/pickup-runs": {
     parameters: {
       query?: never;
       header?: never;
@@ -4284,7 +4239,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/scans": {
+  "/api/v1/scans": {
     parameters: {
       query?: never;
       header?: never;
@@ -4316,7 +4271,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/scans/bulk": {
+  "/api/v1/scans/bulk": {
     parameters: {
       query?: never;
       header?: never;
@@ -4338,7 +4293,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags": {
+  "/api/v1/bags": {
     parameters: {
       query?: never;
       header?: never;
@@ -4366,7 +4321,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}": {
+  "/api/v1/bags/{bagId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4388,7 +4343,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/by-barcode/{barcode}": {
+  "/api/v1/bags/by-barcode/{barcode}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4410,7 +4365,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/items": {
+  "/api/v1/bags/{bagId}/items": {
     parameters: {
       query?: never;
       header?: never;
@@ -4434,7 +4389,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/items/{barcode}": {
+  "/api/v1/bags/{bagId}/items/{barcode}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4456,7 +4411,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/close": {
+  "/api/v1/bags/{bagId}/close": {
     parameters: {
       query?: never;
       header?: never;
@@ -4478,7 +4433,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/dispatch": {
+  "/api/v1/bags/{bagId}/dispatch": {
     parameters: {
       query?: never;
       header?: never;
@@ -4500,7 +4455,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/receive": {
+  "/api/v1/bags/{bagId}/receive": {
     parameters: {
       query?: never;
       header?: never;
@@ -4522,7 +4477,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/open": {
+  "/api/v1/bags/{bagId}/open": {
     parameters: {
       query?: never;
       header?: never;
@@ -4544,7 +4499,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/verify-seal": {
+  "/api/v1/bags/{bagId}/verify-seal": {
     parameters: {
       query?: never;
       header?: never;
@@ -4566,7 +4521,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/bags/{bagId}/exception-correction": {
+  "/api/v1/bags/{bagId}/exception-correction": {
     parameters: {
       query?: never;
       header?: never;
@@ -4588,7 +4543,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests": {
+  "/api/v1/manifests": {
     parameters: {
       query?: never;
       header?: never;
@@ -4616,7 +4571,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests/{manifestId}": {
+  "/api/v1/manifests/{manifestId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4638,7 +4593,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests/{manifestId}/contents": {
+  "/api/v1/manifests/{manifestId}/contents": {
     parameters: {
       query?: never;
       header?: never;
@@ -4668,7 +4623,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests/{manifestId}/close": {
+  "/api/v1/manifests/{manifestId}/close": {
     parameters: {
       query?: never;
       header?: never;
@@ -4690,7 +4645,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests/{manifestId}/dispatch": {
+  "/api/v1/manifests/{manifestId}/dispatch": {
     parameters: {
       query?: never;
       header?: never;
@@ -4712,7 +4667,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/manifests/{manifestId}/receive": {
+  "/api/v1/manifests/{manifestId}/receive": {
     parameters: {
       query?: never;
       header?: never;
@@ -4734,7 +4689,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/carriers": {
+  "/api/v1/carriers": {
     parameters: {
       query?: never;
       header?: never;
@@ -4762,7 +4717,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/vehicles": {
+  "/api/v1/vehicles": {
     parameters: {
       query?: never;
       header?: never;
@@ -4790,7 +4745,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/drivers": {
+  "/api/v1/drivers": {
     parameters: {
       query?: never;
       header?: never;
@@ -4818,7 +4773,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips": {
+  "/api/v1/trips": {
     parameters: {
       query?: never;
       header?: never;
@@ -4846,7 +4801,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}": {
+  "/api/v1/trips/{tripId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -4868,7 +4823,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/assign": {
+  "/api/v1/trips/{tripId}/assign": {
     parameters: {
       query?: never;
       header?: never;
@@ -4890,7 +4845,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/manifests": {
+  "/api/v1/trips/{tripId}/manifests": {
     parameters: {
       query?: never;
       header?: never;
@@ -4912,7 +4867,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/depart": {
+  "/api/v1/trips/{tripId}/depart": {
     parameters: {
       query?: never;
       header?: never;
@@ -4941,7 +4896,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/arrive": {
+  "/api/v1/trips/{tripId}/arrive": {
     parameters: {
       query?: never;
       header?: never;
@@ -4963,7 +4918,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/close": {
+  "/api/v1/trips/{tripId}/close": {
     parameters: {
       query?: never;
       header?: never;
@@ -4985,7 +4940,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/trips/{tripId}/cancel": {
+  "/api/v1/trips/{tripId}/cancel": {
     parameters: {
       query?: never;
       header?: never;
@@ -5007,7 +4962,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/hub/summary": {
+  "/api/v1/hub/summary": {
     parameters: {
       query?: never;
       header?: never;
@@ -5029,7 +4984,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/hub/inbound": {
+  "/api/v1/hub/inbound": {
     parameters: {
       query?: never;
       header?: never;
@@ -5051,7 +5006,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/hub/custody": {
+  "/api/v1/hub/custody": {
     parameters: {
       query?: never;
       header?: never;
@@ -5073,7 +5028,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/hub/throughput": {
+  "/api/v1/hub/throughput": {
     parameters: {
       query?: never;
       header?: never;
@@ -5095,7 +5050,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/exceptions": {
+  "/api/v1/exceptions": {
     parameters: {
       query?: never;
       header?: never;
@@ -5123,7 +5078,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/exceptions/{exceptionId}": {
+  "/api/v1/exceptions/{exceptionId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5145,7 +5100,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/exceptions/{exceptionId}/resolve": {
+  "/api/v1/exceptions/{exceptionId}/resolve": {
     parameters: {
       query?: never;
       header?: never;
@@ -5167,7 +5122,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/reconciliations": {
+  "/api/v1/reconciliations": {
     parameters: {
       query?: never;
       header?: never;
@@ -5197,7 +5152,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/reconciliations/{reconciliationId}": {
+  "/api/v1/reconciliations/{reconciliationId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5219,7 +5174,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/reconciliations/{reconciliationId}/scan": {
+  "/api/v1/reconciliations/{reconciliationId}/scan": {
     parameters: {
       query?: never;
       header?: never;
@@ -5241,7 +5196,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/reconciliations/{reconciliationId}/complete": {
+  "/api/v1/reconciliations/{reconciliationId}/complete": {
     parameters: {
       query?: never;
       header?: never;
@@ -5263,7 +5218,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/delivery-runs": {
+  "/api/v1/delivery-runs": {
     parameters: {
       query?: never;
       header?: never;
@@ -5291,7 +5246,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/delivery-runs/{runId}": {
+  "/api/v1/delivery-runs/{runId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5313,7 +5268,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/delivery-runs/{runId}/stops": {
+  "/api/v1/delivery-runs/{runId}/stops": {
     parameters: {
       query?: never;
       header?: never;
@@ -5335,7 +5290,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/delivery-runs/{runId}/assign": {
+  "/api/v1/delivery-runs/{runId}/assign": {
     parameters: {
       query?: never;
       header?: never;
@@ -5357,7 +5312,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/delivery-runs/{runId}/dispatch": {
+  "/api/v1/delivery-runs/{runId}/dispatch": {
     parameters: {
       query?: never;
       header?: never;
@@ -5379,7 +5334,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/deliveries/queue": {
+  "/api/v1/deliveries/queue": {
     parameters: {
       query?: never;
       header?: never;
@@ -5401,7 +5356,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/deliveries/attempts": {
+  "/api/v1/deliveries/attempts": {
     parameters: {
       query?: never;
       header?: never;
@@ -5429,7 +5384,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/deliveries/otp": {
+  "/api/v1/deliveries/otp": {
     parameters: {
       query?: never;
       header?: never;
@@ -5451,7 +5406,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/ndr": {
+  "/api/v1/ndr": {
     parameters: {
       query?: never;
       header?: never;
@@ -5473,7 +5428,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/ndr/{caseId}": {
+  "/api/v1/ndr/{caseId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5497,7 +5452,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/ndr/{caseId}/action": {
+  "/api/v1/ndr/{caseId}/action": {
     parameters: {
       query?: never;
       header?: never;
@@ -5521,7 +5476,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/ndr/reasons": {
+  "/api/v1/ndr/reasons": {
     parameters: {
       query?: never;
       header?: never;
@@ -5549,7 +5504,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/ndr/reasons/{reasonId}": {
+  "/api/v1/ndr/reasons/{reasonId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5571,7 +5526,7 @@ export interface paths {
     patch: operations["updateNDRReason"];
     trace?: never;
   };
-  "/rto": {
+  "/api/v1/rto": {
     parameters: {
       query?: never;
       header?: never;
@@ -5599,7 +5554,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/rto/{caseId}": {
+  "/api/v1/rto/{caseId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5621,7 +5576,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/rto/{caseId}/dispatch": {
+  "/api/v1/rto/{caseId}/dispatch": {
     parameters: {
       query?: never;
       header?: never;
@@ -5643,7 +5598,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/rto/receive": {
+  "/api/v1/rto/receive": {
     parameters: {
       query?: never;
       header?: never;
@@ -5665,7 +5620,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/rto/{caseId}/complete": {
+  "/api/v1/rto/{caseId}/complete": {
     parameters: {
       query?: never;
       header?: never;
@@ -5687,7 +5642,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pod": {
+  "/api/v1/pod": {
     parameters: {
       query?: never;
       header?: never;
@@ -5715,7 +5670,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pod/{podId}": {
+  "/api/v1/pod/{podId}": {
     parameters: {
       query?: never;
       header?: never;
@@ -5737,7 +5692,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/pod/{podId}/artifacts/{artifactId}/download": {
+  "/api/v1/pod/{podId}/artifacts/{artifactId}/download": {
     parameters: {
       query?: never;
       header?: never;
@@ -5759,7 +5714,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/track/{awb}": {
+  "/api/v1/track/{awb}": {
     parameters: {
       query?: never;
       header?: never;
@@ -8589,10 +8544,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/franchise-collections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List prepaid payments collected by franchise counters */
+    get: operations["listFranchiseCollections"];
+    put?: never;
+    /** Record full payment for a prepaid franchise shipment */
+    post: operations["recordFranchiseCollection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    FranchiseCollection: {
+      publicId: string;
+      /** Format: int64 */
+      shipmentId: number;
+      awb?: string;
+      /** Format: int64 */
+      franchiseId: number;
+      franchiseCode?: string;
+      franchiseName?: string;
+      /** Format: int64 */
+      operatingUnitId: number;
+      unitCode?: string;
+      /** Format: int64 */
+      amountMinor: number;
+      currency: string;
+      /** @enum {string} */
+      paymentMode: "CASH" | "POS" | "TRANSFER" | "BANK_DEPOSIT";
+      reference?: string;
+      /** @enum {string} */
+      status:
+        "COLLECTED" | "IN_SETTLEMENT" | "REMITTED" | "DISPUTED" | "REVERSED";
+      /** Format: date-time */
+      collectedAt: string;
+      collectedByName?: string;
+      /** Format: int64 */
+      settlementId?: number;
+      /** Format: date-time */
+      remittedAt?: string;
+      notes?: string;
+    };
     /**
      * @description A postcode candidate matched from free text, with the context needed to
      *     tell two similarly named places apart.
@@ -12053,6 +12056,18 @@ export interface components {
       /** Format: date-time */
       occurredAt?: string;
     };
+    /** @description A customer-safe planned or scan-discovered Nigeria transit point. */
+    TrackingRouteNode: {
+      sequence?: number;
+      /** @description Facility display name without an internal identifier. */
+      location?: string;
+      /** @enum {string} */
+      nodeType?: "ORIGIN" | "TRANSIT_POINT" | "DESTINATION" | "SCAN_DISCOVERED";
+      /** @enum {string} */
+      status?: "PLANNED" | "REACHED";
+      /** Format: date-time */
+      reachedAt?: string;
+    };
     TrackingResult: {
       awb?: string;
       status?: string;
@@ -12085,6 +12100,7 @@ export interface components {
       currency?: string;
       isReturning?: boolean;
       events?: components["schemas"]["TrackingEvent"][];
+      routeNodes?: components["schemas"]["TrackingRouteNode"][];
     };
     /**
      * @description A chart-of-accounts entry. `balanceMinor` is already signed by
@@ -12294,6 +12310,7 @@ export interface components {
       | "BOOKING"
       | "PICKUP"
       | "ORIGIN_HANDLING"
+      | "TRANSIT_HANDLING"
       | "DESTINATION_HANDLING"
       | "DELIVERY"
       | "COD"
@@ -12317,6 +12334,7 @@ export interface components {
         | "PICKUP_AGENT"
         | "DELIVERY_AGENT"
         | "ORIGIN_UNIT"
+        | "TRANSIT_UNIT"
         | "DESTINATION_UNIT"
         | "CUSTOM";
       schemeCode?: string;
@@ -12398,6 +12416,7 @@ export interface components {
         | "PICKUP_AGENT"
         | "DELIVERY_AGENT"
         | "ORIGIN_UNIT"
+        | "TRANSIT_UNIT"
         | "DESTINATION_UNIT"
         | "CUSTOM";
       franchiseId?: string | null;
@@ -13784,7 +13803,14 @@ export interface components {
       | "COMMISSION"
       | "SETTLEMENT"
       | "REVENUE"
-      | "EXCEPTIONS";
+      | "EXCEPTIONS"
+      | "NIGERIA_VAT"
+      | "NIGERIA_WITHHOLDING_TAX"
+      | "PROFIT_AND_LOSS"
+      | "BALANCE_SHEET"
+      | "CASH_AND_BANK_BOOK"
+      | "RECEIVABLES_AGING"
+      | "FRANCHISE_COLLECTIONS";
     /** @enum {string} */
     ReportStatus:
       "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "EXPIRED" | "CANCELLED";
@@ -21542,6 +21568,75 @@ export interface operations {
           "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
+    };
+  };
+  listFranchiseCollections: {
+    parameters: {
+      query?: {
+        status?:
+          "COLLECTED" | "IN_SETTLEMENT" | "REMITTED" | "DISPUTED" | "REVERSED";
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Scoped collection register. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            data: components["schemas"]["FranchiseCollection"][];
+          };
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+    };
+  };
+  recordFranchiseCollection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          shipmentId: string;
+          /** Format: int64 */
+          amountMinor: number;
+          /** @enum {string} */
+          paymentMode: "CASH" | "POS" | "TRANSFER" | "BANK_DEPOSIT";
+          reference?: string;
+          /** Format: date-time */
+          collectedAt?: string;
+          notes?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Collection recorded or replayed. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            collection: components["schemas"]["FranchiseCollection"];
+            replayed: boolean;
+          };
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      409: components["responses"]["Conflict"];
     };
   };
 }

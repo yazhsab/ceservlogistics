@@ -167,17 +167,83 @@ export const ScannerInput = forwardRef<
     forwardedRef,
   ) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const wedgeBuffer = useRef("");
+    const wedgeStartedAt = useRef(0);
+    const wedgeLastAt = useRef(0);
+    const wedgeTimer = useRef<number | undefined>(undefined);
+
+    const dispatch = (raw: string) => {
+      const normalized = raw.trim().toUpperCase();
+      if (!normalized || busy) return;
+      window.clearTimeout(wedgeTimer.current);
+      wedgeBuffer.current = "";
+      onScan(normalized);
+    };
+
+    const scheduleWedgeSubmit = (readValue: () => string) => {
+      window.clearTimeout(wedgeTimer.current);
+      wedgeTimer.current = window.setTimeout(() => {
+        const chars = wedgeBuffer.current.length;
+        const duration = wedgeLastAt.current - wedgeStartedAt.current;
+        // Keyboard-wedge scanners emit characters much faster than a person.
+        // This also supports devices configured without an Enter/Tab suffix.
+        if (chars >= 4 && duration / Math.max(1, chars - 1) <= 35) {
+          dispatch(readValue());
+        }
+      }, 90);
+    };
     useImperativeHandle(forwardedRef, () => ({
       focus: () => inputRef.current?.focus(),
     }));
     useEffect(() => {
       if (autoFocus) inputRef.current?.focus();
     }, [autoFocus]);
+    useEffect(() => {
+      if (!autoFocus) return;
+      const refocus = () => {
+        if (document.visibilityState === "visible") inputRef.current?.focus();
+      };
+      const captureWedge = (event: KeyboardEvent) => {
+        if (busy || event.ctrlKey || event.metaKey || event.altKey) return;
+        const target = event.target as HTMLElement | null;
+        const isEditable =
+          target?.tagName === "INPUT" ||
+          target?.tagName === "TEXTAREA" ||
+          target?.tagName === "SELECT" ||
+          target?.isContentEditable;
+        if (isEditable) return;
+        if (event.key === "Enter" || event.key === "Tab") {
+          if (wedgeBuffer.current) {
+            event.preventDefault();
+            dispatch(wedgeBuffer.current);
+          }
+          return;
+        }
+        if (event.key.length !== 1) return;
+        event.preventDefault();
+        const now = performance.now();
+        if (!wedgeBuffer.current || now - wedgeLastAt.current > 120) {
+          wedgeBuffer.current = "";
+          wedgeStartedAt.current = now;
+        }
+        wedgeBuffer.current += event.key.toUpperCase();
+        wedgeLastAt.current = now;
+        onChange(wedgeBuffer.current);
+        scheduleWedgeSubmit(() => wedgeBuffer.current);
+      };
+      document.addEventListener("visibilitychange", refocus);
+      window.addEventListener("focus", refocus);
+      window.addEventListener("keydown", captureWedge);
+      return () => {
+        window.clearTimeout(wedgeTimer.current);
+        document.removeEventListener("visibilitychange", refocus);
+        window.removeEventListener("focus", refocus);
+        window.removeEventListener("keydown", captureWedge);
+      };
+    }, [autoFocus, busy, onChange, onScan]);
     const submit = (event: FormEvent) => {
       event.preventDefault();
-      const normalized = value.trim().toUpperCase();
-      if (!normalized || busy) return;
-      onScan(normalized);
+      dispatch(value);
     };
     return (
       <form onSubmit={submit} className="space-y-2">
@@ -193,6 +259,22 @@ export const ScannerInput = forwardRef<
             id="operations-scanner-input"
             value={value}
             onChange={(event) => onChange(event.target.value.toUpperCase())}
+            onKeyDown={(event) => {
+              if (event.key === "Tab" && value.trim()) {
+                event.preventDefault();
+                dispatch(value);
+                return;
+              }
+              if (event.key.length !== 1) return;
+              const now = performance.now();
+              if (!wedgeBuffer.current || now - wedgeLastAt.current > 120) {
+                wedgeBuffer.current = "";
+                wedgeStartedAt.current = now;
+              }
+              wedgeBuffer.current += event.key.toUpperCase();
+              wedgeLastAt.current = now;
+              scheduleWedgeSubmit(() => inputRef.current?.value ?? "");
+            }}
             placeholder={placeholder}
             autoComplete="off"
             spellCheck={false}

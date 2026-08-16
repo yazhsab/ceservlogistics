@@ -94,6 +94,12 @@ func (s *Service) ShipmentObserver() shipment.Observer {
 		switch res.To {
 		case shipment.StatusBooked:
 			return s.onBooked(ctx, tx, p, res)
+		case shipment.StatusOriginBranchReceived:
+			return s.onHandling(ctx, tx, p, res, commission.TypeOriginHandling)
+		case shipment.StatusTransitHubReceived, shipment.StatusDestinationHubReceived:
+			return s.onHandling(ctx, tx, p, res, commission.TypeTransitHandling)
+		case shipment.StatusDestinationBranchReceived:
+			return s.onHandling(ctx, tx, p, res, commission.TypeDestinationHandling)
 		case shipment.StatusDelivered:
 			return s.onDelivered(ctx, tx, p, res)
 		default:
@@ -122,7 +128,31 @@ func (s *Service) onBooked(
 	if err != nil || franchiseID == nil {
 		return err
 	}
-	return s.raise(ctx, tx, p, res, commission.TypeBooking, *franchiseID, sh.BookingUnitID)
+	return s.raise(ctx, tx, p, res, commission.TypeBooking,
+		"FRANCHISE", *franchiseID, franchiseID, sh.BookingUnitID)
+}
+
+// onHandling pays the accountable custody point once when a parcel is received.
+// A franchise-operated point earns as a franchise and therefore participates in
+// settlement. A company-operated hub earns as an operating unit, preserving the
+// unit economics without creating a fictitious franchise liability.
+func (s *Service) onHandling(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, res *shipment.Result, commissionType string,
+) error {
+	unitID := res.Shipment.CurrentCustodyUnitID
+	if unitID == nil {
+		return nil
+	}
+	franchiseID, err := s.franchiseForUnit(ctx, tx, p, *unitID)
+	if err != nil {
+		return err
+	}
+	if franchiseID != nil {
+		return s.raise(ctx, tx, p, res, commissionType,
+			"FRANCHISE", *franchiseID, franchiseID, unitID)
+	}
+	return s.raise(ctx, tx, p, res, commissionType,
+		"OPERATING_UNIT", *unitID, nil, unitID)
 }
 
 // onDelivered opens the COD liability and raises the delivery commission.
@@ -154,7 +184,8 @@ func (s *Service) onDelivered(
 	if err != nil || franchiseID == nil {
 		return err
 	}
-	return s.raise(ctx, tx, p, res, commission.TypeDelivery, *franchiseID, sh.DestinationBranchID)
+	return s.raise(ctx, tx, p, res, commission.TypeDelivery,
+		"FRANCHISE", *franchiseID, franchiseID, sh.DestinationBranchID)
 }
 
 // raise computes and posts one commission from the shipment's own price
@@ -166,7 +197,7 @@ func (s *Service) onDelivered(
 // edited a tariff.
 func (s *Service) raise(
 	ctx context.Context, tx pgx.Tx, p *tenant.Principal, res *shipment.Result,
-	commissionType string, franchiseID int64, unitID *int64,
+	commissionType, recipientType string, recipientID int64, franchiseID, unitID *int64,
 ) error {
 	sh := res.Shipment
 	q := s.q.WithTx(tx)
@@ -198,7 +229,7 @@ func (s *Service) raise(
 	_, _, err = s.comm.Calculate(ctx, tx, p, commission.CalculateRequest{
 		Facts: commission.Facts{
 			CommissionType:  commissionType,
-			FranchiseID:     &franchiseID,
+			FranchiseID:     franchiseID,
 			OperatingUnitID: unitID,
 			ServiceID:       &sh.CourierServiceID,
 			PaymentMode:     sh.PaymentMode,
@@ -207,9 +238,10 @@ func (s *Service) raise(
 		ShipmentID:        &shipmentID,
 		QualifyingEvent:   string(res.To),
 		QualifyingEventID: &eventID,
-		RecipientType:     "FRANCHISE",
-		RecipientID:       franchiseID,
-		FranchiseID:       &franchiseID,
+		RecipientType:     recipientType,
+		RecipientID:       recipientID,
+		FranchiseID:       franchiseID,
+		UnitID:            unitID,
 		// Posted in the same transaction: a commission that is calculated but
 		// not posted is invisible to the ledger and to settlement, which is
 		// the state this whole package exists to avoid.

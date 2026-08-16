@@ -136,6 +136,14 @@ type DemoResult struct {
 	ServiceCode      string
 	OriginPincode    string
 	DestPincode      string
+	Accounts         []DemoAccount
+}
+
+// DemoAccount is a ready-to-use role login created only by `migrate demo`.
+type DemoAccount struct {
+	Role     string
+	Email    string
+	Password string
 }
 
 // Demo builds a complete, bookable tenant for development and load testing.
@@ -156,6 +164,7 @@ func Demo(ctx context.Context, db *database.DB, cfg *config.Config, log *slog.Lo
 		OrganizationCode: orgCode, AdminEmail: adminEmail, AdminPassword: password,
 		ServiceCode: "EXPRESS", OriginPincode: "100001", DestPincode: "900001",
 	}
+	result.Accounts = demoAccounts(password)
 
 	hasher := security.NewHasher(security.Argon2Params{
 		Time: cfg.Auth.Argon2Time, MemoryKiB: cfg.Auth.Argon2MemoryKiB,
@@ -171,8 +180,14 @@ func Demo(ctx context.Context, db *database.DB, cfg *config.Config, log *slog.Lo
 		now := time.Now()
 
 		if existing, gErr := qtx.GetOrganizationByCode(ctx, orgCode); gErr == nil {
-			log.Info("demo organization already exists; leaving it untouched",
+			log.Info("demo organization already exists; ensuring role accounts",
 				slog.String("id", existing.PublicID))
+			if eErr := ensureDemoRoleAccounts(ctx, qtx, existing.ID, hash); eErr != nil {
+				return eErr
+			}
+			if eErr := ensureDemoCommissionRules(ctx, qtx, existing.ID); eErr != nil {
+				return eErr
+			}
 			cust, cErr := qtx.GetCustomerByCode(ctx, dbgen.GetCustomerByCodeParams{
 				OrganizationID: existing.ID, Code: "WALKIN",
 			})
@@ -290,6 +305,13 @@ func Demo(ctx context.Context, db *database.DB, cfg *config.Config, log *slog.Lo
 		abvBranch, err := unit("ABV-001", "Abuja Central", "COMPANY_BRANCH", &abvHub, "900001")
 		if err != nil {
 			return err
+		}
+		if eErr := ensureDemoRoleAccountsWithUnits(ctx, qtx, org.ID, hash,
+			losHub, abvHub, losBranch, abvBranch); eErr != nil {
+			return eErr
+		}
+		if eErr := ensureDemoCommissionRules(ctx, qtx, org.ID); eErr != nil {
+			return eErr
 		}
 
 		for _, sa := range []struct {
@@ -426,6 +448,211 @@ func Demo(ctx context.Context, db *database.DB, cfg *config.Config, log *slog.Lo
 		return nil, err
 	}
 	return result, nil
+}
+
+func demoAccounts(password string) []DemoAccount {
+	return []DemoAccount{
+		{Role: "Organization administrator", Email: "admin@demo.test", Password: password},
+		{Role: "Operations staff", Email: "operations@demo.test", Password: password},
+		{Role: "Finance staff", Email: "finance@demo.test", Password: password},
+		{Role: "Customer support", Email: "support@demo.test", Password: password},
+		{Role: "Hub manager", Email: "hub@demo.test", Password: password},
+		{Role: "Branch manager", Email: "branch@demo.test", Password: password},
+		{Role: "Franchise owner", Email: "franchise.owner@demo.test", Password: password},
+		{Role: "Franchise operator", Email: "franchise.staff@demo.test", Password: password},
+		{Role: "Pickup agent", Email: "pickup@demo.test", Password: password},
+		{Role: "Delivery driver", Email: "driver@demo.test", Password: password},
+	}
+}
+
+func ensureDemoRoleAccounts(ctx context.Context, q *dbgen.Queries, orgID int64, hash string) error {
+	losHub, err := q.GetOperatingUnitByCode(ctx, dbgen.GetOperatingUnitByCodeParams{OrganizationID: orgID, Code: "LOS-HUB"})
+	if err != nil {
+		return fmt.Errorf("demo Lagos hub: %w", err)
+	}
+	abvHub, err := q.GetOperatingUnitByCode(ctx, dbgen.GetOperatingUnitByCodeParams{OrganizationID: orgID, Code: "ABV-HUB"})
+	if err != nil {
+		return fmt.Errorf("demo Abuja hub: %w", err)
+	}
+	losBranch, err := q.GetOperatingUnitByCode(ctx, dbgen.GetOperatingUnitByCodeParams{OrganizationID: orgID, Code: "LOS-001"})
+	if err != nil {
+		return fmt.Errorf("demo Lagos branch: %w", err)
+	}
+	abvBranch, err := q.GetOperatingUnitByCode(ctx, dbgen.GetOperatingUnitByCodeParams{OrganizationID: orgID, Code: "ABV-001"})
+	if err != nil {
+		return fmt.Errorf("demo Abuja branch: %w", err)
+	}
+	return ensureDemoRoleAccountsWithUnits(ctx, q, orgID, hash, losHub.ID, abvHub.ID, losBranch.ID, abvBranch.ID)
+}
+
+func ensureDemoRoleAccountsWithUnits(
+	ctx context.Context, q *dbgen.Queries, orgID int64, hash string,
+	losHub, abvHub, losBranch, abvBranch int64,
+) error {
+	franchiseUnit, err := q.GetOperatingUnitByCode(ctx, dbgen.GetOperatingUnitByCodeParams{OrganizationID: orgID, Code: "LOS-FR1"})
+	if database.IsNoRows(err) {
+		parent, pErr := q.GetOperatingUnitByID(ctx, dbgen.GetOperatingUnitByIDParams{ID: losHub, OrganizationID: orgID})
+		if pErr != nil {
+			return fmt.Errorf("demo franchise parent: %w", pErr)
+		}
+		franchiseUnit, err = q.CreateOperatingUnit(ctx, dbgen.CreateOperatingUnitParams{
+			PublicID: publicid.New(publicid.PrefixOperatingUnit), OrganizationID: orgID,
+			Code: "LOS-FR1", Name: "Lagos Island Franchise", UnitType: "FRANCHISE_BRANCH",
+			ParentUnitID: &losHub, AddressLine1: "24 Marina Road", Pincode: parent.Pincode,
+			PincodeID: parent.PincodeID, CityID: parent.CityID, StateID: parent.StateID,
+			OperatingHours: []byte(`{"mon-fri":"08:00-18:00","sat":"09:00-14:00"}`),
+			EffectiveFrom:  time.Now().AddDate(0, 0, -1),
+		})
+	}
+	if err != nil {
+		return fmt.Errorf("demo franchise unit: %w", err)
+	}
+
+	type accountSeed struct {
+		email, name, role, unitCode string
+		unit                        *int64
+	}
+	seeds := []accountSeed{
+		{"operations@demo.test", "Demo Operations Manager", "OPERATIONS_ADMIN", "", nil},
+		{"finance@demo.test", "Demo Finance Manager", "FINANCE_MANAGER", "", nil},
+		{"support@demo.test", "Demo Customer Support", "CUSTOMER_SUPPORT", "", nil},
+		{"hub@demo.test", "Demo Hub Manager", "HUB_MANAGER", "ABV-HUB", &abvHub},
+		{"branch@demo.test", "Demo Branch Manager", "BRANCH_MANAGER", "ABV-001", &abvBranch},
+		{"franchise.owner@demo.test", "Demo Franchise Owner", "FRANCHISE_OWNER", "LOS-FR1", &franchiseUnit.ID},
+		{"franchise.staff@demo.test", "Demo Franchise Counter Staff", "FRANCHISE_OPERATOR", "LOS-FR1", &franchiseUnit.ID},
+		{"pickup@demo.test", "Demo Pickup Agent", "PICKUP_AGENT", "LOS-001", &losBranch},
+		{"driver@demo.test", "Demo Delivery Driver", "DELIVERY_AGENT", "ABV-001", &abvBranch},
+	}
+	var franchiseOwnerID int64
+	var franchiseOwnerName, franchiseOwnerEmail string
+	for _, seed := range seeds {
+		user, uErr := q.GetUserForLogin(ctx, seed.email)
+		var userID int64
+		var userOrgID int64
+		var userName, userEmail string
+		if database.IsNoRows(uErr) {
+			created, cErr := q.CreateUser(ctx, dbgen.CreateUserParams{
+				PublicID: publicid.New(publicid.PrefixUser), OrganizationID: orgID,
+				Email: seed.email, PasswordHash: hash, FullName: seed.name,
+				Phone: ptrStr("+2348000000000"), Status: "ACTIVE",
+			})
+			uErr = cErr
+			userID, userOrgID, userName, userEmail = created.ID, created.OrganizationID, created.FullName, created.Email
+		} else if uErr == nil {
+			userID, userOrgID, userName, userEmail = user.ID, user.OrganizationID, user.FullName, user.Email
+		}
+		if uErr != nil {
+			return fmt.Errorf("demo user %s: %w", seed.email, uErr)
+		}
+		if userOrgID != orgID {
+			return fmt.Errorf("demo email %s belongs to another organization", seed.email)
+		}
+		role, rErr := q.GetSystemRoleByCode(ctx, seed.role)
+		if rErr != nil {
+			return fmt.Errorf("demo role %s: %w", seed.role, rErr)
+		}
+		assignments, aErr := q.ListUserRoleAssignments(ctx, userID)
+		if aErr != nil {
+			return fmt.Errorf("demo assignments %s: %w", seed.email, aErr)
+		}
+		assigned := false
+		for _, a := range assignments {
+			if a.RoleCode == seed.role && ((a.OperatingUnitCode == nil && seed.unit == nil) ||
+				(a.OperatingUnitCode != nil && seed.unit != nil && *a.OperatingUnitCode == seed.unitCode)) {
+				assigned = true
+				break
+			}
+		}
+		if !assigned {
+			if _, aErr = q.AssignUserRole(ctx, dbgen.AssignUserRoleParams{
+				OrganizationID: orgID, UserID: userID, RoleID: role.ID, OperatingUnitID: seed.unit,
+			}); aErr != nil {
+				return fmt.Errorf("assign %s to %s: %w", seed.role, seed.email, aErr)
+			}
+		}
+		if seed.role == "FRANCHISE_OWNER" {
+			franchiseOwnerID, franchiseOwnerName, franchiseOwnerEmail = userID, userName, userEmail
+		}
+	}
+	if franchiseOwnerID != 0 {
+		_, fErr := q.GetFranchiseByOperatingUnit(ctx, dbgen.GetFranchiseByOperatingUnitParams{OperatingUnitID: franchiseUnit.ID, OrganizationID: orgID})
+		if database.IsNoRows(fErr) {
+			now := time.Now()
+			_, fErr = q.CreateFranchise(ctx, dbgen.CreateFranchiseParams{
+				PublicID: publicid.New(publicid.PrefixFranchise), OrganizationID: orgID,
+				Code: "LOS-FR1", Name: "Lagos Island Franchise", OperatingUnitID: franchiseUnit.ID,
+				Category: "STANDARD", OwnerName: franchiseOwnerName, OwnerUserID: &franchiseOwnerID,
+				OwnerPhone: "+2348000000000", OwnerEmail: &franchiseOwnerEmail,
+				Status: "ACTIVE", OnboardedAt: &now, Metadata: []byte(`{"demo":true}`),
+			})
+		}
+		if fErr != nil {
+			return fmt.Errorf("demo franchise: %w", fErr)
+		}
+	}
+	return nil
+}
+
+// ensureDemoCommissionRules makes the development tenant economically useful:
+// every custody point can demonstrate the commission it earns. Production
+// tenants still configure their own effective-dated rules through the API.
+func ensureDemoCommissionRules(ctx context.Context, q *dbgen.Queries, orgID int64) error {
+	scheme, err := q.GetDefaultScheme(ctx, orgID)
+	if err != nil {
+		return fmt.Errorf("demo commission scheme: %w", err)
+	}
+	type ruleSeed struct {
+		code, name, commissionType, recipientRole, method string
+		fixedMinor                                        *int64
+		rateBP                                            *int32
+		basis                                             *string
+	}
+	fixed := func(v int64) *int64 { return &v }
+	rate := func(v int32) *int32 { return &v }
+	basis := func(v string) *string { return &v }
+	seeds := []ruleSeed{
+		{"DEMO-BOOK", "Franchise booking commission", "BOOKING", "ORIGIN_FRANCHISE", "PERCENTAGE", nil, rate(1000), basis("FREIGHT")},
+		{"DEMO-ORIGIN", "Origin handling commission", "ORIGIN_HANDLING", "ORIGIN_UNIT", "FIXED", fixed(15000), nil, nil},
+		{"DEMO-TRANSIT", "Transit handling commission", "TRANSIT_HANDLING", "TRANSIT_UNIT", "FIXED", fixed(20000), nil, nil},
+		{"DEMO-DEST", "Destination handling commission", "DESTINATION_HANDLING", "DESTINATION_UNIT", "FIXED", fixed(15000), nil, nil},
+		{"DEMO-DELIVERY", "Destination franchise delivery commission", "DELIVERY", "DESTINATION_FRANCHISE", "PERCENTAGE", nil, rate(500), basis("FREIGHT")},
+	}
+	active := "ACTIVE"
+	rules, err := q.ListCommissionRules(ctx, dbgen.ListCommissionRulesParams{
+		OrganizationID: orgID, Limit: 500, Status: &active,
+	})
+	if err != nil {
+		return fmt.Errorf("list demo commission rules: %w", err)
+	}
+	existing := make(map[string]bool, len(rules))
+	for _, rule := range rules {
+		existing[rule.Code] = true
+	}
+	for _, seed := range seeds {
+		if existing[seed.code] {
+			continue
+		}
+		description := "Development-only Nigeria commission example; replace with the approved commercial agreement."
+		rule, cErr := q.CreateCommissionRule(ctx, dbgen.CreateCommissionRuleParams{
+			PublicID: publicid.New("crl"), OrganizationID: orgID, SchemeID: scheme.ID,
+			Code: seed.code, Name: seed.name, CommissionType: seed.commissionType,
+			RecipientRole: seed.recipientRole, Priority: 10, Status: "ACTIVE",
+			Description: &description,
+		})
+		if cErr != nil {
+			return fmt.Errorf("create demo commission rule %s: %w", seed.code, cErr)
+		}
+		notes := "Development-only effective rate"
+		if _, cErr = q.CreateRuleVersion(ctx, dbgen.CreateRuleVersionParams{
+			PublicID: publicid.New("crv"), OrganizationID: orgID, RuleID: rule.ID,
+			VersionNo: 1, CalculationMethod: seed.method, Currency: "NGN",
+			FixedAmountMinor: seed.fixedMinor, RateBp: seed.rateBP, Basis: seed.basis,
+			EffectiveFrom: time.Now().AddDate(0, 0, -1), Status: "ACTIVE", Notes: &notes,
+		}); cErr != nil {
+			return fmt.Errorf("create demo commission version %s: %w", seed.code, cErr)
+		}
+	}
+	return nil
 }
 
 // seedFinance gives a new organization the finance configuration Release 3

@@ -82,4 +82,35 @@ button:disabled {
   body {
     background: white;
   }
+  .shipping-label-page {
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none !important;
+  }
+  .shipping-label-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .label-format-sticker .shipping-label-page {
+    width: 4in !important;
+    height: 6in !important;
+    max-width: none !important;
+    padding: 0.14in !important;
+  }
+  .label-format-courier_sheet {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 8mm !important;
+  }
+  .label-format-courier_sheet .shipping-label-page {
+    width: 190mm !important;
+    height: 135mm !important;
+    max-width: none !important;
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .label-format-courier_sheet .shipping-label-page:nth-child(2n) {
+    break-after: page;
+    page-break-after: always;
+  }
 }

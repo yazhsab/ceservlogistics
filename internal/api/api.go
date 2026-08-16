@@ -22,6 +22,7 @@ import (
 	"github.com/ceserve/courier-os/internal/bagging"
 	"github.com/ceserve/courier-os/internal/billing"
 	"github.com/ceserve/courier-os/internal/cod"
+	"github.com/ceserve/courier-os/internal/collection"
 	"github.com/ceserve/courier-os/internal/commission"
 	"github.com/ceserve/courier-os/internal/customer"
 	"github.com/ceserve/courier-os/internal/dbgen"
@@ -123,6 +124,7 @@ type Application struct {
 	COD        *cod.Service
 	Settlement *settlement.Service
 	Billing    *billing.Service
+	Collection *collection.Service
 
 	// Release 4 productization.
 	Analytics    *analytics.Service
@@ -189,6 +191,7 @@ func New(deps Dependencies) *Application {
 	codSvc := cod.NewService(deps.DB, q, ledgerSvc, rec, deps.Logger, metrics)
 	settlementSvc := settlement.NewService(deps.DB, q, ledgerSvc, rec, deps.Logger, metrics)
 	billingSvc := billing.NewService(deps.DB, q, ledgerSvc, rec, deps.Logger)
+	collectionSvc := collection.NewService(deps.DB, q, rec)
 
 	// Release 4. Notifications and webhooks are both outbox consumers of the
 	// transition engine: they write rows inside the state change's transaction
@@ -260,7 +263,7 @@ func New(deps Dependencies) *Application {
 		NDR: ndrSvc, RTO: rtoSvc, POD: podSvc, Tracking: trackSvc,
 
 		Ledger: ledgerSvc, Commission: commissionSvc, COD: codSvc,
-		Settlement: settlementSvc, Billing: billingSvc,
+		Settlement: settlementSvc, Billing: billingSvc, Collection: collectionSvc,
 
 		Analytics: analyticsSvc, Notification: notifySvc, Senders: senders,
 		Portal: portalSvc, Reporting: reportSvc, Storage: deps.Storage,
@@ -301,6 +304,7 @@ func (a *Application) buildRouter(deps Dependencies) http.Handler {
 	commandHandler := analytics.NewHandler(a.Analytics, a.Units)
 	notifyHandler := notification.NewHandler(a.Notification)
 	reportHandler := reporting.NewHandler(a.Reporting, a.Queries)
+	collectionHandler := collection.NewHandler(a.Collection)
 	portalHandler := portalapi.New(portalapi.Services{
 		Portal: a.Portal, Booker: a.Booker, Tracking: a.Tracking,
 		Units: a.Units, Queries: a.Queries,
@@ -389,6 +393,7 @@ func (a *Application) buildRouter(deps Dependencies) http.Handler {
 			priv.Route("/command-centre", commandHandler.Routes)
 			priv.Route("/notifications", notifyHandler.Routes)
 			priv.Route("/reports", reportHandler.Routes)
+			priv.Route("/franchise-collections", collectionHandler.Routes)
 
 			// The three audience surfaces. Each one is scoped by who is asking
 			// rather than by what they ask for, so they are mounted inside the

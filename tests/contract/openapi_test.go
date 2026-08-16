@@ -414,6 +414,7 @@ func TestFinanceEnumsMatchCode(t *testing.T) {
 	}{
 		{"CommissionType", []string{
 			commission.TypeBooking, commission.TypePickup, commission.TypeOriginHandling,
+			commission.TypeTransitHandling,
 			commission.TypeDestinationHandling, commission.TypeDelivery, commission.TypeCOD,
 			commission.TypeVolumeIncentive, commission.TypeCustom,
 		}},

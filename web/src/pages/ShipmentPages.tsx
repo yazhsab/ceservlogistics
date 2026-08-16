@@ -1062,6 +1062,9 @@ function LabelDialog({
   onOpenChange: (value: boolean) => void;
   shipmentId: string;
 }) {
+  const [printFormat, setPrintFormat] = useState<"STICKER" | "COURIER_SHEET">(
+    "STICKER",
+  );
   const query = useQuery({
     queryKey: ["shipment-label", shipmentId],
     queryFn: () =>
@@ -1084,9 +1087,20 @@ function LabelDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Shipment label"
-      description="4 × 6 inch counter label. Print JSON-rendered label or download printer-ready ZPL."
+      description="Print one scannable label per package as a 4 × 6 sticker or a two-up A4 courier sheet."
       footer={
         <>
+          <Select
+            aria-label="Print format"
+            className="no-print"
+            value={printFormat}
+            onChange={(event) =>
+              setPrintFormat(event.target.value as typeof printFormat)
+            }
+          >
+            <option value="STICKER">4 × 6 sticker labels</option>
+            <option value="COURIER_SHEET">A4 courier sheet</option>
+          </Select>
           <Button onClick={() => void downloadZpl()} disabled={!query.data}>
             <Download aria-hidden className="h-4 w-4" /> Download ZPL
           </Button>
@@ -1095,7 +1109,7 @@ function LabelDialog({
             onClick={() => window.print()}
             disabled={!query.data}
           >
-            <Printer aria-hidden className="h-4 w-4" /> Print label
+            <Printer aria-hidden className="h-4 w-4" /> Print all pieces
           </Button>
         </>
       }
@@ -1105,15 +1119,51 @@ function LabelDialog({
       ) : query.error ? (
         <ErrorState error={query.error} retry={() => void query.refetch()} />
       ) : query.data ? (
-        <ShippingLabel label={query.data} />
+        <ShippingLabel label={query.data} printFormat={printFormat} />
       ) : null}
     </Dialog>
   );
 }
 
-function ShippingLabel({ label }: { label: Label }) {
+function ShippingLabel({
+  label,
+  printFormat,
+}: {
+  label: Label;
+  printFormat: "STICKER" | "COURIER_SHEET";
+}) {
+  const pieces = label.pieces?.length
+    ? label.pieces
+    : [{ sequence: 1, barcode: label.barcodePayload }];
   return (
-    <div className="mx-auto aspect-[2/3] w-full max-w-[420px] border-2 border-slate-950 bg-white p-4 text-slate-950">
+    <div
+      className={`label-print-sheet label-format-${printFormat.toLowerCase()} space-y-4 print:space-y-0`}
+    >
+      {pieces.map((piece) => (
+        <PieceShippingLabel
+          key={piece.barcode ?? `${label.awb}-${piece.sequence}`}
+          label={label}
+          piece={piece}
+          total={pieces.length}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PieceShippingLabel({
+  label,
+  piece,
+  total,
+}: {
+  label: Label;
+  piece: NonNullable<Label["pieces"]>[number];
+  total: number;
+}) {
+  const pieceBarcode = piece.barcode ?? label.awb ?? "";
+  const pieceQrPayload = `${label.qrPayload ?? "CSV1|"}|${piece.sequence}|${pieceBarcode}`;
+  return (
+    <div className="shipping-label-page mx-auto aspect-[2/3] w-full max-w-[420px] border-2 border-slate-950 bg-white p-4 text-slate-950">
       <div className="flex items-start justify-between border-b-2 border-slate-950 pb-3">
         <div>
           <strong className="text-xl tracking-wide">CESERVE</strong>
@@ -1145,13 +1195,37 @@ function ShippingLabel({ label }: { label: Label }) {
           </p>
         </div>
         {label.qrPayload ? (
-          <QRCodeSVG value={label.qrPayload} size={84} level="M" />
+          <QRCodeSVG value={pieceQrPayload} size={84} level="M" />
         ) : null}
+      </div>
+      <div className="grid grid-cols-2 gap-3 border-b py-2 text-[10px]">
+        <div>
+          <strong className="block uppercase">From</strong>
+          <span>{label.sender?.name}</span>
+          <br />
+          <span>{label.sender?.line1}</span>
+          <br />
+          <span>
+            {label.sender?.city}, {label.sender?.state}
+          </span>
+        </div>
+        <div>
+          <strong className="block uppercase">Shipment</strong>
+          <span>AWB: {label.awb}</span>
+          <br />
+          <span>Contents: {label.contentDescription}</span>
+          {label.referenceNumber ? (
+            <>
+              <br />
+              <span>Reference: {label.referenceNumber}</span>
+            </>
+          ) : null}
+        </div>
       </div>
       <div className="py-2 text-center">
         {label.barcodePayload ? (
           <Barcode
-            value={label.barcodePayload}
+            value={pieceBarcode}
             format="CODE128"
             height={54}
             width={1.6}
@@ -1162,12 +1236,18 @@ function ShippingLabel({ label }: { label: Label }) {
       </div>
       <div className="grid grid-cols-3 gap-px bg-slate-950 text-center text-xs">
         <div className="bg-white p-2">
-          <span className="block text-[9px] uppercase">Pieces</span>
-          <strong>{label.pieceCount}</strong>
+          <span className="block text-[9px] uppercase">Package</span>
+          <strong>
+            {piece.sequence} of {total}
+          </strong>
         </div>
         <div className="bg-white p-2">
           <span className="block text-[9px] uppercase">Weight</span>
-          <strong>{label.weightLabel}</strong>
+          <strong>
+            {piece.actualWeightGrams
+              ? formatWeight(piece.actualWeightGrams)
+              : label.weightLabel}
+          </strong>
         </div>
         <div className="bg-white p-2">
           <span className="block text-[9px] uppercase">Payment</span>

@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#15243a" />
+    <meta name="ceserv-api-base" content="https://api.ceservlogistics.com" />
+    <title>Track your parcel | Ceserv Logistics</title>
+    <style>
+      :root {
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        color: #fff;
+        background: #f5f3ef;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #15243a;
+      }
+      .hero {
+        min-height: 520px;
+        padding: 26px 20px 74px;
+        color: white;
+        background:
+          linear-gradient(
+            115deg,
+            rgba(17, 31, 50, 0.96),
+            rgba(29, 47, 67, 0.76)
+          ),
+          radial-gradient(circle at 82% 20%, #f36a3d 0, transparent 36%),
+          #15243a;
+      }
+      .nav,
+      .hero-inner,
+      .content {
+        width: min(1080px, 100%);
+        margin: auto;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        color: white;
+        text-decoration: none;
+        font-size: 21px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+      }
+      .brand small {
+        display: block;
+        font-size: 9px;
+        letter-spacing: 0.32em;
+        color: #ff7a4c;
+      }
+      .website {
+        color: white;
+        font-weight: 700;
+        text-decoration: none;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 999px;
+        padding: 11px 17px;
+      }
+      .hero-inner {
+        padding-top: 82px;
+      }
+      .eyebrow {
+        color: #ff7447;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+      h1 {
+        max-width: 760px;
+        margin: 14px 0;
+        font-size: clamp(38px, 7vw, 72px);
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+        text-transform: uppercase;
+      }
+      .intro {
+        max-width: 640px;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 17px;
+        line-height: 1.65;
+      }
+      form {
+        max-width: 720px;
+        margin-top: 30px;
+      }
+      .tracking-box {
+        padding: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 18px 55px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(12px);
+      }
+      .tracking-label {
+        display: block;
+        padding: 5px 13px 10px;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .field {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        align-items: center;
+        min-height: 64px;
+        border: 2px solid transparent;
+        border-radius: 17px;
+        background: white;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+      }
+      .field:focus-within {
+        border-color: #ff7447;
+        box-shadow: 0 0 0 5px rgba(242, 103, 61, 0.2);
+      }
+      .search-icon {
+        width: 22px;
+        height: 22px;
+        margin-left: 14px;
+        color: #64748b;
+      }
+      input {
+        min-width: 0;
+        width: 100%;
+        height: 60px;
+        border: 0;
+        outline: 0;
+        padding: 0 14px;
+        font: inherit;
+        font-size: 18px;
+        font-weight: 750;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      input::placeholder {
+        color: #94a3b8;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+      button {
+        height: 48px;
+        margin-right: 6px;
+        border: 0;
+        border-radius: 13px;
+        padding: 0 25px;
+        background: #f2673d;
+        color: white;
+        font: inherit;
+        font-weight: 900;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        box-shadow: 0 8px 20px rgba(242, 103, 61, 0.3);
+      }
+      button:hover {
+        background: #df552e;
+        transform: translateY(-1px);
+      }
+      button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+      .content {
+        position: relative;
+        margin-top: -44px;
+        padding: 0 20px 60px;
+      }
+      .card {
+        border-radius: 22px;
+        background: white;
+        box-shadow: 0 20px 60px rgba(17, 31, 50, 0.12);
+        padding: clamp(24px, 5vw, 48px);
+      }
+      .empty {
+        text-align: center;
+        color: #64748b;
+      }
+      .status {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: start;
+        justify-content: space-between;
+        gap: 18px;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 24px;
+      }
+      .awb {
+        color: #64748b;
+        font-family: ui-monospace, monospace;
+        font-weight: 700;
+      }
+      h2 {
+        margin: 8px 0;
+        font-size: 28px;
+      }
+      .pill {
+        border-radius: 999px;
+        padding: 8px 13px;
+        color: #99411f;
+        background: #fff0e9;
+        font-weight: 800;
+      }
+      .timeline {
+        margin: 28px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      .route-heading {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 28px;
+      }
+      .route-heading h3 { margin: 0; font-size: 18px; }
+      .route-heading span { color: #64748b; font-size: 12px; }
+      .route-map {
+        display: flex;
+        align-items: flex-start;
+        margin-top: 18px;
+        padding: 8px 2px 20px;
+        overflow-x: auto;
+      }
+      .route-node {
+        position: relative;
+        flex: 1 0 145px;
+        min-width: 145px;
+        text-align: center;
+      }
+      .route-node:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        z-index: 0;
+        top: 14px;
+        left: calc(50% + 17px);
+        width: calc(100% - 34px);
+        height: 3px;
+        background: #dbe3e8;
+      }
+      .route-node.reached:not(:last-child)::after { background: #f2673d; }
+      .node-dot {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        width: 31px;
+        height: 31px;
+        margin: 0 auto 9px;
+        place-items: center;
+        border: 3px solid #dbe3e8;
+        border-radius: 50%;
+        background: white;
+        color: #94a3b8;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      .route-node.reached .node-dot {
+        border-color: #f2673d;
+        background: #fff0e9;
+        color: #b74320;
+      }
+      .route-node.current .node-dot {
+        color: white;
+        background: #f2673d;
+        box-shadow: 0 0 0 6px #fff0e9;
+      }
+      .route-node strong, .route-node small { display: block; }
+      .route-node strong { font-size: 13px; }
+      .route-node small { margin-top: 3px; color: #64748b; font-size: 11px; }
+      .shipment-facts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 22px;
+      }
+      .fact {
+        padding: 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        background: #f8fafc;
+      }
+      .fact span, .fact strong { display: block; }
+      .fact span {
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .fact strong { margin-top: 5px; font-size: 14px; }
+      .timeline li {
+        position: relative;
+        margin-left: 8px;
+        border-left: 2px solid #fed2c1;
+        padding: 0 0 28px 28px;
+      }
+      .timeline li::before {
+        content: "";
+        position: absolute;
+        left: -8px;
+        top: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #f2673d;
+        box-shadow: 0 0 0 5px #fff0e9;
+      }
+      .timeline strong {
+        display: block;
+      }
+      .timeline span {
+        display: block;
+        margin-top: 5px;
+        color: #64748b;
+        font-size: 14px;
+      }
+      .error {
+        color: #9f2d20;
+        text-align: center;
+      }
+      footer {
+        padding: 24px;
+        text-align: center;
+        color: #64748b;
+        font-size: 13px;
+      }
+      footer a {
+        color: #d44d26;
+        font-weight: 800;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (max-width: 620px) {
+        .field {
+          grid-template-columns: 32px minmax(0, 1fr);
+          padding: 4px;
+        }
+        .field button {
+          grid-column: 1 / -1;
+          width: 100%;
+          margin: 0;
+        }
+        button {
+          width: 100%;
+        }
+        .website {
+          font-size: 12px;
+        }
+        .shipment-facts { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="hero">
+      <nav class="nav">
+        <a class="brand" href="https://www.ceservlogistics.com/"
+          >CESERV <small>LOGISTICS</small></a
+        >
+        <a class="website" href="https://www.ceservlogistics.com/"
+          >Return to website</a
+        >
+      </nav>
+      <div class="hero-inner">
+        <div class="eyebrow">Real-time shipment tracking</div>
+        <h1>Your parcel journey, clearly tracked</h1>
+        <p class="intro">
+          Enter the AWB number printed on your receipt or package label to see
+          customer-safe delivery updates.
+        </p>
+        <form id="tracking-form">
+          <div class="tracking-box">
+            <label class="tracking-label" for="awb"
+              >Air waybill (AWB) number</label
+            >
+            <div class="field">
+              <svg
+                class="search-icon"
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-3.5-3.5"></path>
+              </svg>
+              <input
+                id="awb"
+                name="awb"
+                aria-label="AWB number"
+                placeholder="Example: CSV260810000001"
+                maxlength="64"
+                autocomplete="off"
+                required
+              />
+              <button id="submit" type="submit">Track shipment →</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+    <main class="content" aria-live="polite">
+      <section class="card empty" id="empty">
+        Your latest parcel milestones will appear here.
+      </section>
+      <section class="card" id="result" hidden></section>
+      <section class="card error" id="error" hidden></section>
+    </main>
+    <footer>
+      Need another service?
+      <a href="https://www.ceservlogistics.com/">Visit Ceserv Logistics</a>
+    </footer>
+    <script>
+      (() => {
+        const apiBase = document
+          .querySelector('meta[name="ceserv-api-base"]')
+          .content.replace(/\/$/, "");
+        const form = document.getElementById("tracking-form");
+        const input = document.getElementById("awb");
+        const submit = document.getElementById("submit");
+        const empty = document.getElementById("empty");
+        const result = document.getElementById("result");
+        const error = document.getElementById("error");
+        let activeAwb = "";
+        const escape = (value) =>
+          String(value ?? "").replace(
+            /[&<>"']/g,
+            (c) =>
+              ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+              })[c],
+          );
+        const showError = (message) => {
+          result.hidden = true;
+          empty.hidden = true;
+          error.hidden = false;
+          error.textContent = message;
+        };
+        const renderRouteNodes = (data) => {
+          const delivered = data.milestone === "DELIVERED";
+          const candidates = data.routeNodes?.length
+            ? data.routeNodes.map((node) => ({
+                label: node.location,
+                occurredAt: node.reachedAt,
+                reached: node.status === "REACHED",
+              }))
+            : [
+                { label: data.origin || "Origin", reached: true },
+                ...(data.events || [])
+                  .filter((event) => event.location)
+                  .map((event) => ({
+                    label: event.location,
+                    occurredAt: event.occurredAt,
+                    reached: true,
+                  })),
+                {
+                  label: data.destination || "Destination",
+                  reached: delivered,
+                  occurredAt: delivered ? data.deliveredAt : null,
+                },
+              ];
+          const nodes = [];
+          candidates.forEach((candidate) => {
+            const key = String(candidate.label).trim().toLowerCase();
+            const existing = nodes.find((node) => node.key === key);
+            if (existing) {
+              existing.reached ||= candidate.reached;
+              existing.occurredAt ||= candidate.occurredAt;
+            } else {
+              nodes.push({ ...candidate, key });
+            }
+          });
+          let currentIndex = 0;
+          nodes.forEach((node, index) => {
+            if (node.reached) currentIndex = index;
+          });
+          return nodes
+            .map(
+              (node, index) =>
+                `<div class="route-node ${node.reached ? "reached" : "planned"} ${index === currentIndex && !delivered ? "current" : ""}"><div class="node-dot">${node.reached ? "✓" : index + 1}</div><strong>${escape(node.label)}</strong><small>${escape(node.occurredAt ? new Date(node.occurredAt).toLocaleString() : node.reached ? "Reached" : "Planned")}</small></div>`,
+            )
+            .join("");
+        };
+        const track = async (awb, background = false) => {
+          if (!background) {
+            submit.disabled = true;
+            submit.textContent = "Tracking…";
+          }
+          error.hidden = true;
+          try {
+            const response = await fetch(
+              `${apiBase}/api/v1/track/${encodeURIComponent(awb)}`,
+              { headers: { Accept: "application/json" } },
+            );
+            if (response.status === 404)
+              throw new Error(
+                "Tracking information was not found. Check the AWB and try again.",
+              );
+            if (response.status === 429)
+              throw new Error(
+                "Too many tracking requests. Please wait a moment and try again.",
+              );
+            if (!response.ok)
+              throw new Error(
+                "Tracking is temporarily unavailable. Please try again shortly.",
+              );
+            const data = await response.json();
+            const events = (data.events || [])
+              .map(
+                (item) =>
+                  `<li><strong>${escape(item.title || item.milestone || "Shipment update")}</strong><span>${escape([item.description, item.location].filter(Boolean).join(" · "))}</span><span>${escape(item.occurredAt ? new Date(item.occurredAt).toLocaleString() : "")}</span></li>`,
+              )
+              .join("");
+            const latestLocation = [...(data.events || [])]
+              .reverse()
+              .find((event) => event.location)?.location;
+            result.innerHTML = `<div class="status"><div><div class="awb">${escape(data.awb)}</div><h2>${escape(data.statusTitle || "In transit")}</h2><div>${escape(data.statusDescription || "Your shipment is moving through our network.")}</div></div><div class="pill">${escape(data.statusTitle || data.milestone || "In transit")}</div></div><div class="shipment-facts"><div class="fact"><span>Current location</span><strong>${escape(latestLocation || data.origin || "Awaiting first facility scan")}</strong></div><div class="fact"><span>Nigeria route</span><strong>${escape(data.origin || "Origin")} → ${escape(data.destination || "Destination")}</strong></div><div class="fact"><span>Expected delivery</span><strong>${escape(data.expectedDelivery || "To be confirmed")}</strong></div></div><div class="route-heading"><h3>Parcel route</h3><span>Nodes update when route scans are received</span></div><div class="route-map" aria-label="Shipment route">${renderRouteNodes(data)}</div><div class="route-heading"><h3>Tracking history</h3><span>Automatically refreshed every 30 seconds</span></div><ol class="timeline">${events || "<li><strong>Shipment booked</strong><span>Movement updates will appear here.</span></li>"}</ol>`;
+            empty.hidden = true;
+            error.hidden = true;
+            result.hidden = false;
+            activeAwb = awb;
+            history.replaceState(null, "", `?awb=${encodeURIComponent(awb)}`);
+          } catch (reason) {
+            if (!background)
+              showError(
+                reason instanceof Error
+                  ? reason.message
+                  : "Unable to track this shipment.",
+              );
+          } finally {
+            if (!background) {
+              submit.disabled = false;
+              submit.textContent = "Track shipment";
+            }
+          }
+        };
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const awb = input.value.trim().toUpperCase();
+          if (awb) track(awb);
+        });
+        window.setInterval(() => {
+          if (activeAwb && document.visibilityState === "visible")
+            track(activeAwb, true);
+        }, 30000);
+        const initial = new URLSearchParams(location.search).get("awb");
+        if (initial) {
+          input.value = initial.toUpperCase();
+          track(input.value);
+        }
+      })();
+    </script>
+  </body>
+</html>

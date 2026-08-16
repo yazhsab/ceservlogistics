@@ -1004,6 +1004,29 @@ type FranchiseAgreement struct {
 	UpdatedAt            time.Time
 }
 
+type FranchiseCollection struct {
+	ID              int64
+	PublicID        string
+	OrganizationID  int64
+	ShipmentID      int64
+	FranchiseID     int64
+	OperatingUnitID int64
+	CustomerID      int64
+	AmountMinor     int64
+	Currency        string
+	PaymentMode     string
+	Reference       *string
+	Status          string
+	CollectedAt     time.Time
+	CollectedBy     int64
+	SettlementID    *int64
+	RemittedAt      *time.Time
+	Notes           *string
+	RequestID       *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type IdempotencyKey struct {
 	ID               int64
 	OrganizationID   int64
@@ -1686,6 +1709,22 @@ type Organization struct {
 	Country string
 }
 
+type PackageType struct {
+	ID                int64
+	PublicID          string
+	OrganizationID    int64
+	Code              string
+	Name              string
+	LengthMm          int32
+	WidthMm           int32
+	HeightMm          int32
+	VolumetricDivisor int32
+	MaxWeightGrams    *int32
+	IsActive          bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type PasswordResetToken struct {
 	ID        int64
 	UserID    int64
@@ -2269,6 +2308,7 @@ type Settlement struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	Version              int32
+	CollectionsMinor     int64
 }
 
 type SettlementAdjustment struct {
@@ -2575,6 +2615,24 @@ type State struct {
 	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type StateBaseRate struct {
+	ID                  int64
+	PublicID            string
+	OrganizationID      int64
+	StateID             int64
+	RegionalZoneID      *int64
+	CourierServiceID    *int64
+	BaseWeightGrams     int32
+	BaseCostMinor       int64
+	AdditionalStepGrams int32
+	AdditionalCostMinor int64
+	Currency            string
+	IsActive            bool
+	CreatedBy           *int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type StoredObject struct {

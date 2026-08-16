@@ -86,12 +86,14 @@ const (
 	CatBookingCommission   = "BOOKING_COMMISSION"
 	CatPickupCommission    = "PICKUP_COMMISSION"
 	CatOriginHandling      = "ORIGIN_HANDLING"
+	CatTransitHandling     = "TRANSIT_HANDLING"
 	CatDestinationHandling = "DESTINATION_HANDLING"
 	CatDeliveryCommission  = "DELIVERY_COMMISSION"
 	CatCODCommission       = "COD_COMMISSION"
 	CatVolumeIncentive     = "VOLUME_INCENTIVE"
 	CatCustomCommission    = "CUSTOM_COMMISSION"
 	CatCODLiability        = "COD_LIABILITY"
+	CatCustomerCollection  = "CUSTOMER_COLLECTION"
 	CatCharge              = "CHARGE"
 	CatPenalty             = "PENALTY"
 	CatIncentive           = "INCENTIVE"
@@ -106,6 +108,7 @@ const (
 	SrcCommission     = "COMMISSION_CALCULATION"
 	SrcCODObligation  = "COD_OBLIGATION"
 	SrcCODAdjustment  = "COD_ADJUSTMENT"
+	SrcCollection     = "FRANCHISE_COLLECTION"
 	SrcAdjustment     = "SETTLEMENT_ADJUSTMENT"
 	SrcPrevSettlement = "PREVIOUS_SETTLEMENT"
 	SrcTaxRule        = "TAX_RULE"
@@ -424,6 +427,32 @@ func (s *Service) calculate(
 		})
 	}
 
+	// --- Prepaid customer money held by the franchise ----------------------
+	// Like COD, this reduces the amount head office owes. Unlike COD it was
+	// collected at origin from the sender and is tied one-to-one to a prepaid
+	// shipment.
+	collections, err := q.SweepFranchiseCollectionsForSettlement(ctx, dbgen.SweepFranchiseCollectionsForSettlementParams{
+		OrganizationID: p.OrganizationID, FranchiseID: franchiseID,
+		PeriodStart: periodStart, PeriodEnd: periodEnd,
+	})
+	if err != nil {
+		return nil, apierr.Internal(err)
+	}
+	var collectionTotal int64
+	collectionIDs := make([]int64, 0, len(collections))
+	for _, c := range collections {
+		collectionTotal -= c.AmountMinor
+		id := c.ID
+		drafts = append(drafts, lineDraft{
+			Category:    CatCustomerCollection,
+			Description: fmt.Sprintf("Prepaid customer collection for %s", c.Awb),
+			AmountMinor: -c.AmountMinor, Quantity: 1,
+			SourceType: SrcCollection, SourceID: &id, SourcePubID: c.PublicID,
+			ShipmentID: &c.ShipmentID,
+		})
+		collectionIDs = append(collectionIDs, id)
+	}
+
 	// --- Approved adjustments ------------------------------------------------
 	adjustments, err := q.ListPendingAdjustmentsForSettlement(ctx, stl.ID)
 	if err != nil {
@@ -513,6 +542,7 @@ func (s *Service) calculate(
 		CommissionMinor:     commissionTotal,
 		IncentiveMinor:      incentiveTotal,
 		CodLiabilityMinor:   codTotal,
+		CollectionsMinor:    collectionTotal,
 		ChargesMinor:        0,
 		PenaltiesMinor:      penaltyTotal,
 		AdjustmentsMinor:    adjustmentTotal,
@@ -535,6 +565,13 @@ func (s *Service) calculate(
 	if len(commissionIDs) > 0 {
 		if err := q.AttachCalculationsToSettlement(ctx, dbgen.AttachCalculationsToSettlementParams{
 			OrganizationID: p.OrganizationID, SettlementID: &updated.ID, Ids: commissionIDs,
+		}); err != nil {
+			return nil, apierr.Internal(err)
+		}
+	}
+	if len(collectionIDs) > 0 {
+		if err := q.AttachFranchiseCollectionsToSettlement(ctx, dbgen.AttachFranchiseCollectionsToSettlementParams{
+			OrganizationID: p.OrganizationID, SettlementID: &updated.ID, Ids: collectionIDs,
 		}); err != nil {
 			return nil, apierr.Internal(err)
 		}
@@ -683,6 +720,11 @@ func (s *Service) Approve(
 				return apierr.Conflict(CodeInvalidState,
 					"This settlement was approved by another request, or you calculated it yourself.")
 			}
+			return apierr.Internal(err)
+		}
+		if err := q.MarkFranchiseCollectionsRemitted(ctx, dbgen.MarkFranchiseCollectionsRemittedParams{
+			OrganizationID: p.OrganizationID, SettlementID: &locked.ID,
+		}); err != nil {
 			return apierr.Internal(err)
 		}
 
@@ -893,6 +935,11 @@ func (s *Service) Cancel(
 		}); err != nil {
 			return apierr.Internal(err)
 		}
+		if err := q.ReleaseFranchiseCollectionsFromSettlement(ctx, dbgen.ReleaseFranchiseCollectionsFromSettlementParams{
+			OrganizationID: p.OrganizationID, SettlementID: &header.ID,
+		}); err != nil {
+			return apierr.Internal(err)
+		}
 
 		cancelled, err := q.CancelSettlement(ctx, dbgen.CancelSettlementParams{
 			OrganizationID: p.OrganizationID, ID: header.ID, CancelReason: &reason,
@@ -928,6 +975,8 @@ func categoryForCommission(commissionType string) string {
 		return CatPickupCommission
 	case "ORIGIN_HANDLING":
 		return CatOriginHandling
+	case "TRANSIT_HANDLING":
+		return CatTransitHandling
 	case "DESTINATION_HANDLING":
 		return CatDestinationHandling
 	case "DELIVERY":

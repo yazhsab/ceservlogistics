@@ -45,6 +45,16 @@ type Event struct {
 	OccurredAt  time.Time `json:"occurredAt"`
 }
 
+// RouteNode is a customer-safe planned or scan-discovered point in the parcel
+// journey. It deliberately contains no internal identifiers.
+type RouteNode struct {
+	Sequence  int        `json:"sequence"`
+	Location  string     `json:"location"`
+	NodeType  string     `json:"nodeType"`
+	Status    string     `json:"status"`
+	ReachedAt *time.Time `json:"reachedAt,omitempty"`
+}
+
 // Result is the public tracking response.
 type Result struct {
 	AWB              string     `json:"awb"`
@@ -62,10 +72,11 @@ type Result struct {
 	DeliveredAt      *time.Time `json:"deliveredAt,omitempty"`
 	// AmountDueMinor is shown only for COD, because the recipient needs to have
 	// the money ready. No other financial figure is published.
-	AmountDueMinor *int64  `json:"amountDueOnDeliveryMinor,omitempty"`
-	Currency       string  `json:"currency,omitempty"`
-	IsReturning    bool    `json:"isReturning"`
-	Events         []Event `json:"events"`
+	AmountDueMinor *int64      `json:"amountDueOnDeliveryMinor,omitempty"`
+	Currency       string      `json:"currency,omitempty"`
+	IsReturning    bool        `json:"isReturning"`
+	Events         []Event     `json:"events"`
+	RouteNodes     []RouteNode `json:"routeNodes"`
 }
 
 // Service resolves public tracking queries.
@@ -156,6 +167,7 @@ func (s *Service) Track(ctx context.Context, awb string) (*Result, error) {
 		return nil, apierr.Internal(err)
 	}
 	result.Events = s.buildTimeline(events, milestones)
+	result.RouteNodes = s.buildRouteNodes(ctx, row.RouteDefinitionID, row.OriginUnitName, row.DestinationUnitName, events, result)
 
 	// A short TTL: tracking is read far more often than a parcel moves, and a
 	// minute of staleness is invisible to a customer but removes most of the
@@ -163,6 +175,66 @@ func (s *Service) Track(ctx context.Context, awb string) (*Result, error) {
 	s.cache.SetJSON(ctx, key, result, s.ttl)
 	s.metrics.RecordBusiness("tracking", "resolved")
 	return result, nil
+}
+
+func (s *Service) buildRouteNodes(
+	ctx context.Context, routeID *int64, originUnit, destinationUnit *string,
+	events []dbgen.ListPublicTrackingEventsRow, result *Result,
+) []RouteNode {
+	nodes := make([]RouteNode, 0, 8)
+	add := func(location, nodeType string) {
+		location = strings.TrimSpace(location)
+		if location == "" {
+			return
+		}
+		for _, node := range nodes {
+			if strings.EqualFold(node.Location, location) {
+				return
+			}
+		}
+		nodes = append(nodes, RouteNode{Sequence: len(nodes) + 1, Location: location, NodeType: nodeType, Status: "PLANNED"})
+	}
+	if originUnit != nil {
+		add(*originUnit, "ORIGIN")
+	}
+	if routeID != nil {
+		if legs, err := s.q.ListRouteLegs(ctx, *routeID); err == nil {
+			for _, leg := range legs {
+				add(leg.FromName, "TRANSIT_POINT")
+				add(leg.ToName, "TRANSIT_POINT")
+			}
+		}
+	}
+	if destinationUnit != nil {
+		add(*destinationUnit, "DESTINATION")
+	}
+	if len(nodes) == 0 {
+		add(result.Origin, "ORIGIN")
+		add(result.Destination, "DESTINATION")
+	}
+	for _, event := range events {
+		if event.LocationName == nil || strings.TrimSpace(*event.LocationName) == "" {
+			continue
+		}
+		matched := false
+		for i := range nodes {
+			if strings.EqualFold(nodes[i].Location, *event.LocationName) {
+				t := event.OccurredAt
+				nodes[i].Status, nodes[i].ReachedAt = "REACHED", &t
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t := event.OccurredAt
+			nodes = append(nodes, RouteNode{Sequence: len(nodes) + 1, Location: *event.LocationName, NodeType: "SCAN_DISCOVERED", Status: "REACHED", ReachedAt: &t})
+		}
+	}
+	if result.Milestone == "DELIVERED" && len(nodes) > 0 {
+		nodes[len(nodes)-1].Status = "REACHED"
+		nodes[len(nodes)-1].ReachedAt = result.DeliveredAt
+	}
+	return nodes
 }
 
 // buildTimeline turns raw events into customer-facing milestones.
@@ -212,8 +284,8 @@ func publicLocation(r dbgen.ListPublicTrackingEventsRow) string {
 	if r.LocationCity != nil && *r.LocationCity != "" {
 		return *r.LocationCity
 	}
-	if r.LocationPincode != nil && *r.LocationPincode != "" {
-		return *r.LocationPincode
+	if r.LocationPincode != "" {
+		return r.LocationPincode
 	}
 	return ""
 }
