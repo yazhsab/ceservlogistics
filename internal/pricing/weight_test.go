@@ -17,9 +17,9 @@ func testService(divisor, rounding, minWeight int32) *dbgen.CourierService {
 // TestComputeChargeableWeight pins the volumetric formula and the slab
 // rounding, which together decide what a customer is billed for.
 //
-// The formula is (L x W x H in mm) / divisor. Millimetres cancel against the
-// kilogram-to-gram conversion, so the numerator is used directly:
-// 300x200x150 mm at divisor 5000 is 1800 g.
+// The business formula is (L x W x H in cm) / divisor, producing kilograms.
+// The API stores exact millimetres; converting mm to cm and kg to grams cancels
+// the three powers of ten, so the stored numerator can be used directly.
 func TestComputeChargeableWeight(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -36,6 +36,12 @@ func TestComputeChargeableWeight(t *testing.T) {
 			packages: []Package{{ActualWeightGrams: 600}},
 			divisor:  5000, rounding: 500, minWeight: 1,
 			wantVolumetric: 0, wantChargeable: 1000,
+		},
+		{
+			name:     "50 by 40 by 25 centimetres is 10 kilograms",
+			packages: []Package{{ActualWeightGrams: 500, LengthMM: 500, WidthMM: 400, HeightMM: 250}},
+			divisor:  5000, rounding: 500, minWeight: 1,
+			wantVolumetric: 10000, wantChargeable: 10000,
 		},
 		{
 			name:     "volumetric weight dominates a light bulky parcel",

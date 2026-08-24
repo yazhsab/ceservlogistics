@@ -1,0 +1,55 @@
+{
+  "customerId": "cus_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1002:F-1",
+  "serviceCode": "EXPRESS",
+  "paymentMode": "PREPAID",
+  "sender": {
+    "contactName": "Ada Okafor",
+    "companyName": "Ahiabekee Lagos Fulfilment Centre",
+    "phone": "+2348012345601",
+    "email": "dispatch@example.test",
+    "line1": "12 Warehouse Avenue",
+    "landmark": "Near the cargo terminal",
+    "city": "Ikeja",
+    "state": "Lagos",
+    "pincode": "100001",
+    "countryCode": "NG"
+  },
+  "recipient": {
+    "contactName": "Amina Bello",
+    "phone": "+2348012345603",
+    "email": "amina@example.test",
+    "line1": "8 Demonstration Road",
+    "city": "Abuja",
+    "state": "Federal Capital Territory",
+    "pincode": "900001",
+    "countryCode": "NG"
+  },
+  "packages": [
+    {
+      "reference": "AHB-1002-P1",
+      "actualWeightGrams": 900,
+      "lengthMm": 300,
+      "widthMm": 220,
+      "heightMm": 120,
+      "contentDescription": "Clothing",
+      "declaredValueMinor": 5000000
+    }
+  ],
+  "declaredValueMinor": 5000000,
+  "insuranceRequired": false,
+  "contentDescription": "Clothing",
+  "isFragile": false,
+  "isDangerousGoods": false,
+  "metadata": {
+    "canonicalSchemaVersion": "CommerceFulfillmentReady/v1",
+    "commerceEventId": "cfr_01K36D9A4V8Q2R5S7T0W3X6YBZ",
+    "commercePlatform": "ahiabekee",
+    "commerceStoreId": "ng-main",
+    "commerceOrderId": "1002",
+    "commerceFulfillmentId": "1002-1",
+    "commerceFulfillmentVersion": 1,
+    "sourceChannel": "web",
+    "salesChannel": "direct"
+  }
+}

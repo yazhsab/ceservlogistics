@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  cmToMm,
+  formatDimensionsCm,
   formatMoney,
   formatWeight,
+  gramsToKg,
+  kgToGrams,
+  mmToCm,
   pincodeIsValid,
   safeDownloadName,
   titleCase,
@@ -17,6 +22,16 @@ describe("courier display utilities", () => {
   it("formats operational weights", () => {
     expect(formatWeight(500)).toBe("500 g");
     expect(formatWeight(1250)).toBe("1.25 kg");
+    expect(kgToGrams(20)).toBe(20000);
+    expect(kgToGrams(0.125)).toBe(125);
+    expect(gramsToKg(125)).toBe(0.125);
+  });
+
+  it("keeps centimetre measurements exact at the millimetre API boundary", () => {
+    expect(cmToMm(50)).toBe(500);
+    expect(cmToMm(12.3)).toBe(123);
+    expect(mmToCm(123)).toBe(12.3);
+    expect(formatDimensionsCm(500, 400, 250)).toBe("50 × 40 × 25 cm");
   });
 
   it("validates six-digit Nigerian postal codes", () => {

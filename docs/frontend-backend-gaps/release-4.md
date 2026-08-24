@@ -94,17 +94,16 @@ for customer and franchise users, operating-unit bindings, shipments, invoices,
 COD, settlements, notifications, reports, credentials, and webhooks. Do not add
 a fixture API to production.
 
-## 7. Known integration event limitations
+## 7. Known integration limitations
 
-Per the final backend contract:
+The Phase 2 ecommerce/logistics hardening added transactional producers for
+`pickup.completed`, `pod.captured`, and `cod.collected`. Remaining limitations:
 
-- `pod.captured` and `cod.collected` are in the webhook catalogue but are not yet
-  emitted;
 - webhook subscription filters are stored but not applied;
 - circuit breaking is limited to the existing 20-failure pause.
 
 The integration UI shows configured events and actual delivery evidence but does
-not claim unsupported emission or filter enforcement.
+not claim filter enforcement.
 
 ## 8. Cross-release Nigeria contract terminology
 

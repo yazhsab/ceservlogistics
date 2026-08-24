@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "CommerceFulfillmentReady/v1",
+  "eventType": "commerce.fulfillment_ready",
+  "eventId": "cfr_01K36D9A4V8Q2R5S7T0W3X6YBZ",
+  "occurredAt": "2026-08-23T10:20:00Z",
+  "platform": "ahiabekee",
+  "store": {
+    "id": "ng-main",
+    "code": "NG-MAIN",
+    "name": "Ahiabekee Nigeria",
+    "countryCode": "NG",
+    "currency": "NGN"
+  },
+  "order": {
+    "id": "1002",
+    "number": "AHB-20260823-1002",
+    "createdAt": "2026-08-23T09:05:00Z"
+  },
+  "fulfillment": {
+    "id": "1002-1",
+    "number": "F-1",
+    "version": 1,
+    "readyAt": "2026-08-23T10:20:00Z"
+  },
+  "merchant": {
+    "logisticsCustomerId": "cus_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+  },
+  "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1002:F-1",
+  "serviceCode": "EXPRESS",
+  "sender": {
+    "contactName": "Ada Okafor",
+    "companyName": "Ahiabekee Lagos Fulfilment Centre",
+    "phone": "+2348012345601",
+    "email": "dispatch@example.test",
+    "line1": "12 Warehouse Avenue",
+    "landmark": "Near the cargo terminal",
+    "city": "Ikeja",
+    "state": "Lagos",
+    "pincode": "100001",
+    "countryCode": "NG"
+  },
+  "recipient": {
+    "externalCustomerId": "customer-1002",
+    "contactName": "Amina Bello",
+    "phone": "+2348012345603",
+    "email": "amina@example.test",
+    "line1": "8 Demonstration Road",
+    "city": "Abuja",
+    "state": "Federal Capital Territory",
+    "pincode": "900001",
+    "countryCode": "NG"
+  },
+  "packages": [
+    {
+      "reference": "AHB-1002-P1",
+      "actualWeightGrams": 900,
+      "lengthMm": 300,
+      "widthMm": 220,
+      "heightMm": 120,
+      "contentDescription": "Clothing",
+      "declaredValueMinor": 5000000
+    }
+  ],
+  "payment": {
+    "mode": "PREPAID",
+    "currency": "NGN",
+    "merchandiseSubtotalMinor": 5000000,
+    "discountMinor": 0,
+    "taxMinor": 375000,
+    "shippingChargeMinor": 125000,
+    "prepaidAmountMinor": 5500000,
+    "storeCreditAppliedMinor": 0,
+    "orderTotalMinor": 5500000
+  },
+  "declaredValueMinor": 5000000,
+  "insuranceRequired": false,
+  "contentDescription": "Clothing",
+  "isFragile": false,
+  "isDangerousGoods": false,
+  "metadata": {
+    "sourceChannel": "web",
+    "salesChannel": "direct"
+  }
+}

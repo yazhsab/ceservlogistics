@@ -1,0 +1,20 @@
+{
+  "id": "pat_01K39A7B9C2D4E6F8G0H3JKMNP",
+  "type": "pickup.completed",
+  "createdAt": "2026-08-23T11:30:02Z",
+  "data": {
+    "pickupRequestId": "pkr_01K39A1B3C5D7E9F2G4H6JKMNP",
+    "reference": "PU-LOS-20260823-0042",
+    "attemptId": "pat_01K39A7B9C2D4E6F8G0H3JKMNP",
+    "status": "COMPLETED",
+    "outcome": "COMPLETED",
+    "occurredAt": "2026-08-23T11:30:00Z",
+    "piecesCollected": 1,
+    "shipments": [
+      {
+        "shipmentId": "shp_01K36G3F5P9YJ7M2E8Q4T6V0WX",
+        "awb": "CSV260823000001"
+      }
+    ]
+  }
+}

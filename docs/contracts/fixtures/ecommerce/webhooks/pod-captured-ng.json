@@ -1,0 +1,17 @@
+{
+  "id": "pod_01K39B1C3D5E7F9G2H4JKM6NPQ",
+  "type": "pod.captured",
+  "createdAt": "2026-08-24T08:48:02Z",
+  "data": {
+    "podId": "pod_01K39B1C3D5E7F9G2H4JKM6NPQ",
+    "shipmentId": "shp_01K36G3F5P9YJ7M2E8Q4T6V0WX",
+    "awb": "CSV260823000001",
+    "podType": "DELIVERY",
+    "deliveredAt": "2026-08-24T08:45:00Z",
+    "recordedAt": "2026-08-24T08:48:00Z",
+    "otpVerified": true,
+    "signatureCaptured": true,
+    "photoCaptured": true,
+    "artifactCount": 2
+  }
+}

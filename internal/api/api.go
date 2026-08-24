@@ -218,6 +218,9 @@ func New(deps Dependencies) *Application {
 	keySvc := partner.NewKeyService(deps.DB, q, security.NewHasher(security.DefaultArgon2Params()),
 		rec, deps.Logger)
 	webhookSvc := partner.NewWebhookService(deps.DB, q, enqueuer, rec, deps.Logger)
+	pickupSvc.ObserveCompletion(webhookSvc.PickupObserver())
+	podSvc.ObserveCapture(webhookSvc.PODObserver())
+	codSvc.ObserveCollection(webhookSvc.CODObserver())
 
 	// Every observer runs inside the transition's transaction. Order is fixed
 	// and deliberate.

@@ -73,6 +73,7 @@ type WebhookService struct {
 	q      *dbgen.Queries
 	jobs   *jobs.Enqueuer
 	client *http.Client
+	urls   *webhookURLPolicy
 	audit  *audit.Recorder
 	log    *slog.Logger
 }
@@ -81,12 +82,13 @@ func NewWebhookService(
 	db *database.DB, q *dbgen.Queries, enq *jobs.Enqueuer,
 	rec *audit.Recorder, log *slog.Logger,
 ) *WebhookService {
+	urls := newWebhookURLPolicy()
 	return &WebhookService{
-		db: db, q: q, jobs: enq, audit: rec, log: log,
+		db: db, q: q, jobs: enq, audit: rec, log: log, urls: urls,
 		// A bounded client. An endpoint that never responds must not hold a
 		// worker slot indefinitely; the per-endpoint timeout narrows this
 		// further at send time.
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: newWebhookHTTPClient(urls),
 	}
 }
 
@@ -98,6 +100,9 @@ func NewWebhookService(
 // an incident.
 func (s *WebhookService) SetHTTPClient(c *http.Client) {
 	if c != nil {
+		// Tests may replace TLS transport, but redirects remain disabled: this is
+		// a security invariant of the service rather than a transport default.
+		c.CheckRedirect = rejectWebhookRedirect
 		s.client = c
 	}
 }
@@ -218,6 +223,10 @@ func (s *WebhookService) Deliver(ctx context.Context, orgID, deliveryID int64) e
 	endpoint, err := s.q.GetWebhookEndpointByID(ctx, claimed.EndpointID)
 	if err != nil {
 		return err
+	}
+	if _, err := s.urls.validate(ctx, endpoint.Url); err != nil {
+		return s.recordFailure(ctx, orgID, claimed, endpoint, nil,
+			"webhook destination rejected: "+err.Error(), 0)
 	}
 
 	timestamp := time.Now().UTC().Unix()
@@ -404,14 +413,21 @@ func (s *WebhookService) RegisterHandlers(w *jobs.Worker) {
 func (s *WebhookService) CreateEndpoint(
 	ctx context.Context, p *tenant.Principal, name, url string, events []string,
 ) (*dbgen.WebhookEndpoint, string, error) {
-	if !strings.HasPrefix(url, "https://") {
+	parsed, err := s.urls.validate(ctx, url)
+	if err != nil {
 		return nil, "", apierr.Validation(
-			"A webhook endpoint must be HTTPS: payloads carry customer data.",
-			map[string]any{"url": "must start with https://"})
+			"The webhook endpoint is not a safe public HTTPS destination.",
+			map[string]any{"url": err.Error()})
 	}
+	url = parsed.String()
 	secret, err := randomToken(32)
 	if err != nil {
 		return nil, "", apierr.Internal(err)
+	}
+	var apiKeyID *int64
+	if p.IsPartner && p.PartnerKeyID != 0 {
+		id := p.PartnerKeyID
+		apiKeyID = &id
 	}
 
 	var endpoint *dbgen.WebhookEndpoint
@@ -420,7 +436,8 @@ func (s *WebhookService) CreateEndpoint(
 		created, cErr := q.CreateWebhookEndpoint(ctx, dbgen.CreateWebhookEndpointParams{
 			PublicID: publicid.New("whe"), OrganizationID: p.OrganizationID,
 			Name: name, Url: url, SigningSecret: secret,
-			MaxAttempts: 6, TimeoutSeconds: 10, CreatedBy: &p.UserID,
+			MaxAttempts: 6, TimeoutSeconds: 10,
+			ApiKeyID: apiKeyID, CreatedBy: p.ActorUserID(),
 		})
 		if cErr != nil {
 			return apierr.Internal(cErr)

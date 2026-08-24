@@ -198,8 +198,9 @@ See [`docs/frontend-backend-gaps/release-4.md`](../frontend-backend-gaps/release
 The remaining product gaps are template versioning; customer booking/estimate,
 pickup, addresses, and POD; dedicated late-pickup and NDR-aging aggregates;
 report preview/progress percentage; and backend-provided seeded portal fixtures.
-Known platform limitations also remain around real notification providers,
-`pod.captured`/`cod.collected` emission, and webhook filter enforcement.
+Known platform limitations also remain around real notification providers and
+webhook filter enforcement. Phase 2 subsequently added transactional producers
+for every published webhook event.
 OpenAPI still exposes legacy `pincode`, `gstNumber`, and `panNumber` field names
 and some India-specific schema descriptions; the UI localizes those concepts
 without changing the transport contract.

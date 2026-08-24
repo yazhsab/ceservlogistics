@@ -1,0 +1,16 @@
+{
+  "id": "cdc_01K39B5C7D9E2F4G6H8JKM0NPQ",
+  "type": "cod.collected",
+  "createdAt": "2026-08-24T08:46:02Z",
+  "data": {
+    "collectionId": "cdc_01K39B5C7D9E2F4G6H8JKM0NPQ",
+    "shipmentId": "shp_01K36G3F5P9YJ7M2E8Q4T6V0WX",
+    "awb": "CSV260823000001",
+    "amountMinor": 16625000,
+    "currency": "NGN",
+    "paymentMode": "CASH",
+    "collectedAt": "2026-08-24T08:45:30Z",
+    "custodyStatus": "AGENT_COLLECTED",
+    "reconciliationStatus": "PENDING"
+  }
+}

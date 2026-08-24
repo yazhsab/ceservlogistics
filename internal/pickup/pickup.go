@@ -47,17 +47,50 @@ var pickupFailureReasons = []string{
 
 // Service implements the pickup workflow.
 type Service struct {
-	db       *database.DB
-	q        *dbgen.Queries
-	geo      *geography.Service
-	routing  *serviceability.Resolver
-	units    *ops.Resolver
-	codes    *ops.CodeAllocator
-	trans    *shipment.Transitioner
-	audit    *audit.Recorder
-	log      *slog.Logger
-	maxDays  int
-	maxItems int
+	db                 *database.DB
+	q                  *dbgen.Queries
+	geo                *geography.Service
+	routing            *serviceability.Resolver
+	units              *ops.Resolver
+	codes              *ops.CodeAllocator
+	trans              *shipment.Transitioner
+	audit              *audit.Recorder
+	log                *slog.Logger
+	maxDays            int
+	maxItems           int
+	completedObservers []CompletionObserver
+}
+
+// CompletionEvent is the durable business fact raised when a pickup visit
+// finishes successfully or partially successfully. Observers run inside the
+// pickup transaction and may enqueue work, but must not perform network I/O.
+type CompletionEvent struct {
+	Request   dbgen.PickupRequest
+	Attempt   dbgen.PickupAttempt
+	Status    string
+	Shipments []dbgen.Shipment
+}
+
+type CompletionObserver func(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, event CompletionEvent,
+) error
+
+// ObserveCompletion registers a pickup completion outbox observer at startup.
+func (s *Service) ObserveCompletion(observer CompletionObserver) {
+	if observer != nil {
+		s.completedObservers = append(s.completedObservers, observer)
+	}
+}
+
+func (s *Service) runCompletionObservers(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, event CompletionEvent,
+) error {
+	for _, observer := range s.completedObservers {
+		if err := observer(ctx, tx, p, event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewService builds the pickup service.

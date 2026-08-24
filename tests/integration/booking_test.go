@@ -114,6 +114,47 @@ func TestBookingProducesCompleteRecord(t *testing.T) {
 	}
 }
 
+func TestBookingUsesOneCountryForPostcodeResolutionAndSnapshots(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	geo := env.Geography(t)
+	tn := env.NewTenant(t, geo, harness.TenantOptions{Code: "CTRY"})
+
+	// Lowercase explicit input is normalized. The same NG value that selected
+	// the postcode records must be frozen on both immutable address snapshots.
+	body := tn.BookingBody(nil)
+	body["sender"].(map[string]any)["countryCode"] = "ng"
+	body["recipient"].(map[string]any)["countryCode"] = "NG"
+	created := env.Do(t, http.MethodPost, "/api/v1/shipments", tn.AdminAccessTok, body,
+		[2]string{"Idempotency-Key", harness.RandomKey()})
+	if created.Status != http.StatusCreated {
+		t.Fatalf("Nigerian booking: %d %s", created.Status, created.Raw)
+	}
+	shipmentID, _ := created.Body["id"].(string)
+	var ngSnapshots int
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		FROM shipment_address_snapshots a
+		JOIN shipments s ON s.id = a.shipment_id
+		WHERE s.organization_id = $1 AND s.public_id = $2 AND a.country_code = 'NG'`,
+		tn.OrgID, shipmentID).Scan(&ngSnapshots); err != nil {
+		t.Fatal(err)
+	}
+	if ngSnapshots != 2 {
+		t.Fatalf("NG snapshots = %d, want sender and recipient (2)", ngSnapshots)
+	}
+
+	// The same numeric postcode exists only in the Nigerian fixture. Marking
+	// the address IN must not silently resolve the Nigerian row.
+	wrongCountry := tn.BookingBody(nil)
+	wrongCountry["sender"].(map[string]any)["countryCode"] = "IN"
+	refused := env.Do(t, http.MethodPost, "/api/v1/shipments", tn.AdminAccessTok, wrongCountry,
+		[2]string{"Idempotency-Key", harness.RandomKey()})
+	if refused.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("explicit IN postcode resolved as Nigerian: %d %s", refused.Status, refused.Raw)
+	}
+}
+
 // TestShipmentEventsAreAppendOnly proves the database refuses to rewrite
 // operational history, independently of application code.
 func TestShipmentEventsAreAppendOnly(t *testing.T) {

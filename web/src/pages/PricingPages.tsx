@@ -47,8 +47,10 @@ import {
   Textarea,
 } from "../components/ui";
 import {
+  cmToMm,
   formatMoney,
   formatWeight,
+  kgToGrams,
   titleCase,
   toMinorUnits,
 } from "../lib/utils";
@@ -60,10 +62,10 @@ const simulatorSchema = z.object({
   customerId: z.string().optional(),
   serviceCode: z.string().min(1),
   paymentMode: z.enum(["PREPAID", "COD", "CREDIT", "TO_PAY"]),
-  actualWeightGrams: z.number().int().min(1),
-  lengthMm: z.number().int().min(1).optional(),
-  widthMm: z.number().int().min(1).optional(),
-  heightMm: z.number().int().min(1).optional(),
+  actualWeightKg: z.number().min(0.001).multipleOf(0.001),
+  lengthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  widthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  heightCm: z.number().min(0.1).multipleOf(0.1).optional(),
   codAmount: z.string().optional(),
   declaredValue: z.string().optional(),
   insuranceRequired: z.boolean(),
@@ -89,7 +91,7 @@ export function PricingSimulatorPage() {
     resolver: zodResolver(simulatorSchema),
     defaultValues: {
       paymentMode: "PREPAID",
-      actualWeightGrams: 500,
+      actualWeightKg: 0.5,
       insuranceRequired: false,
     },
   });
@@ -103,10 +105,10 @@ export function PricingSimulatorPage() {
         paymentMode: values.paymentMode,
         packages: [
           {
-            actualWeightGrams: values.actualWeightGrams,
-            ...(values.lengthMm ? { lengthMm: values.lengthMm } : {}),
-            ...(values.widthMm ? { widthMm: values.widthMm } : {}),
-            ...(values.heightMm ? { heightMm: values.heightMm } : {}),
+            actualWeightGrams: kgToGrams(values.actualWeightKg) ?? 0,
+            ...(values.lengthCm ? { lengthMm: cmToMm(values.lengthCm) } : {}),
+            ...(values.widthCm ? { widthMm: cmToMm(values.widthCm) } : {}),
+            ...(values.heightCm ? { heightMm: cmToMm(values.heightCm) } : {}),
           },
         ],
         ...(values.customerId ? { customerId: values.customerId } : {}),
@@ -136,7 +138,7 @@ export function PricingSimulatorPage() {
         <Panel className="h-fit">
           <PanelHeader
             title="Shipment inputs"
-            description="No totals are calculated in the browser."
+            description="Measure in centimetres. Dimensional weight (kg) = length × width × height ÷ 5,000. No totals are calculated in the browser."
           />
           <form
             className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-1"
@@ -206,44 +208,51 @@ export function PricingSimulatorPage() {
               </Field>
             </div>
             <Field
-              label="Actual weight (g)"
-              htmlFor="actualWeightGrams"
+              label="Shipment weight (kg)"
+              htmlFor="actualWeightKg"
               required
-              error={errors.actualWeightGrams?.message}
+              error={errors.actualWeightKg?.message}
             >
               <Input
-                id="actualWeightGrams"
+                id="actualWeightKg"
                 type="number"
-                min={1}
-                {...register("actualWeightGrams", { valueAsNumber: true })}
+                min={0.001}
+                step={0.001}
+                {...register("actualWeightKg", { valueAsNumber: true })}
               />
             </Field>
             <div className="grid grid-cols-3 gap-2">
-              <Field label="Length mm" htmlFor="lengthMm">
+              <Field label="Length (cm)" htmlFor="lengthCm">
                 <Input
-                  id="lengthMm"
+                  id="lengthCm"
                   type="number"
-                  {...register("lengthMm", {
+                  min={0.1}
+                  step={0.1}
+                  {...register("lengthCm", {
                     setValueAs: (value) =>
                       value === "" ? undefined : Number(value),
                   })}
                 />
               </Field>
-              <Field label="Width mm" htmlFor="widthMm">
+              <Field label="Width (cm)" htmlFor="widthCm">
                 <Input
-                  id="widthMm"
+                  id="widthCm"
                   type="number"
-                  {...register("widthMm", {
+                  min={0.1}
+                  step={0.1}
+                  {...register("widthCm", {
                     setValueAs: (value) =>
                       value === "" ? undefined : Number(value),
                   })}
                 />
               </Field>
-              <Field label="Height mm" htmlFor="heightMm">
+              <Field label="Height (cm)" htmlFor="heightCm">
                 <Input
-                  id="heightMm"
+                  id="heightCm"
                   type="number"
-                  {...register("heightMm", {
+                  min={0.1}
+                  step={0.1}
+                  {...register("heightCm", {
                     setValueAs: (value) =>
                       value === "" ? undefined : Number(value),
                   })}

@@ -7,11 +7,14 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ceserve/courier-os/internal/audit"
+	"github.com/ceserve/courier-os/internal/cod"
 	"github.com/ceserve/courier-os/internal/dbgen"
 	"github.com/ceserve/courier-os/internal/ops"
+	"github.com/ceserve/courier-os/internal/pickup"
 	"github.com/ceserve/courier-os/internal/platform/apierr"
 	"github.com/ceserve/courier-os/internal/platform/jobs"
 	"github.com/ceserve/courier-os/internal/platform/publicid"
+	"github.com/ceserve/courier-os/internal/pod"
 	"github.com/ceserve/courier-os/internal/shipment"
 	"github.com/ceserve/courier-os/internal/tenant"
 )
@@ -115,6 +118,83 @@ func (s *WebhookService) ShipmentObserver() shipment.Observer {
 			"occurredAt": res.Event.OccurredAt.UTC().Format(time.RFC3339),
 			"reference":  sh.ReferenceNumber,
 			"reasonCode": res.Event.ReasonCode,
+		}, &sh.ID)
+		return err
+	}
+}
+
+// PickupObserver publishes successful and partial pickup completions. One
+// pickup can collect several shipments, so shipment_id on the delivery row is
+// intentionally null and the payload carries the public shipment identities.
+func (s *WebhookService) PickupObserver() pickup.CompletionObserver {
+	return func(ctx context.Context, tx pgx.Tx, p *tenant.Principal, event pickup.CompletionEvent) error {
+		shipments := make([]map[string]any, 0, len(event.Shipments))
+		for _, sh := range event.Shipments {
+			shipments = append(shipments, map[string]any{
+				"shipmentId": sh.PublicID,
+				"awb":        sh.Awb,
+			})
+		}
+		_, err := s.Emit(ctx, tx, p, EventPickupCompleted, event.Attempt.PublicID, map[string]any{
+			"pickupRequestId": event.Request.PublicID,
+			"reference":       event.Request.ReferenceCode,
+			"attemptId":       event.Attempt.PublicID,
+			"status":          event.Status,
+			"outcome":         event.Attempt.Outcome,
+			"occurredAt":      event.Attempt.OccurredAt.UTC().Format(time.RFC3339),
+			"piecesCollected": event.Attempt.PiecesCollected,
+			"shipments":       shipments,
+		}, nil)
+		return err
+	}
+}
+
+// PODObserver publishes evidence metadata without exposing private object keys,
+// recipient identity documents, coordinates, or artifact bytes.
+func (s *WebhookService) PODObserver() pod.CaptureObserver {
+	return func(ctx context.Context, tx pgx.Tx, p *tenant.Principal, event pod.CaptureEvent) error {
+		podRecord := event.POD
+		sh := event.Shipment
+		_, err := s.Emit(ctx, tx, p, EventPODCaptured, podRecord.PublicID, map[string]any{
+			"podId":             podRecord.PublicID,
+			"shipmentId":        sh.PublicID,
+			"awb":               sh.Awb,
+			"podType":           podRecord.PodType,
+			"deliveredAt":       podRecord.DeliveredAt.UTC().Format(time.RFC3339),
+			"recordedAt":        podRecord.RecordedAt.UTC().Format(time.RFC3339),
+			"otpVerified":       podRecord.OtpVerified,
+			"signatureCaptured": podRecord.SignatureCaptured,
+			"photoCaptured":     podRecord.PhotoCaptured,
+			"artifactCount":     event.ArtifactCount,
+		}, &sh.ID)
+		return err
+	}
+}
+
+// CODObserver reports cash custody, not payment settlement. Ecommerce clients
+// must keep the collection pending reconciliation until a later finance flow
+// explicitly settles it.
+func (s *WebhookService) CODObserver() cod.CollectionObserver {
+	return func(ctx context.Context, tx pgx.Tx, p *tenant.Principal, result *cod.CollectResult) error {
+		q := s.q.WithTx(tx)
+		sh, err := q.GetShipmentByID(ctx, dbgen.GetShipmentByIDParams{
+			OrganizationID: p.OrganizationID,
+			ID:             result.Collection.ShipmentID,
+		})
+		if err != nil {
+			return apierr.Internal(err)
+		}
+		collection := result.Collection
+		_, err = s.Emit(ctx, tx, p, EventCODCollected, collection.PublicID, map[string]any{
+			"collectionId":         collection.PublicID,
+			"shipmentId":           sh.PublicID,
+			"awb":                  sh.Awb,
+			"amountMinor":          collection.AmountMinor,
+			"currency":             collection.Currency,
+			"paymentMode":          collection.PaymentMode,
+			"collectedAt":          collection.CollectedAt.UTC().Format(time.RFC3339),
+			"custodyStatus":        result.Obligation.Status,
+			"reconciliationStatus": "PENDING",
 		}, &sh.ID)
 		return err
 	}

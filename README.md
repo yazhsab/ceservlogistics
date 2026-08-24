@@ -64,6 +64,10 @@ Vite proxies `/api` to the local API on port 8080. Open
 `http://127.0.0.1:3000` and sign in with the demo credentials printed by
 `go run ./cmd/migrate demo`.
 
+Flutter field applications live under `mobile/`. See
+[`mobile/README.md`](mobile/README.md) for the CServe Driver and CServe Scanner
+setup, supported workflows and quality checks.
+
 ---
 
 ## Documentation
@@ -79,6 +83,7 @@ Vite proxies `/api` to the local API on port 8080. Open
 | [`docs/releases/release-1-frontend.md`](docs/releases/release-1-frontend.md)         | Frontend routes, UX decisions, tests, visual QA, and risks.                   |
 | [`docs/frontend-backend-gaps/release-1.md`](docs/frontend-backend-gaps/release-1.md) | Backend contract gaps intentionally not simulated by the UI.                  |
 | [`CLAUDE.md`](CLAUDE.md)                                                             | The engineering constitution this code is built to.                           |
+| [`mobile/README.md`](mobile/README.md)                                               | Flutter driver/scanner setup, verification, and limitations.                  |
 
 ---
 
@@ -148,6 +153,7 @@ db/{migrations,queries}    SQL, embedded into the binaries
 deploy/                    Nginx, PostgreSQL config, production compose
 tests/{harness,integration,contract,perf,load}
 web/                      React/TypeScript/Vite frontend and Playwright tests
+mobile/                   Flutter driver and operations scanner apps plus shared core
 ```
 
 ---

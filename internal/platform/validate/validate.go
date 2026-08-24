@@ -108,6 +108,25 @@ func (v *Validator) Email(field, value string) string {
 
 var codeRe = regexp.MustCompile(`^[A-Z0-9][A-Z0-9_-]{1,31}$`)
 
+var countryCodeRe = regexp.MustCompile(`^[A-Z]{2}$`)
+
+// CountryCode validates an optional or required ISO-3166 alpha-2 code and
+// returns its uppercase form. Existence in the configured geography is checked
+// by the geography service rather than by request-shape validation.
+func (v *Validator) CountryCode(field, value string, required bool) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "" {
+		if required {
+			v.Add(field, "This field is required.")
+		}
+		return ""
+	}
+	if !countryCodeRe.MatchString(value) {
+		v.Add(field, "Must be a two-letter ISO-3166 country code.")
+	}
+	return value
+}
+
 // Code validates an operator-assigned business code (branch code, service code,
 // rate-card code). Codes are uppercased and constrained so they are safe in URLs,
 // CSV exports and label barcodes.

@@ -299,6 +299,7 @@ func ValidateBooking(req *BookingRequest, maxPackages int) error {
 }
 
 func validateAddress(v *validate.Validator, prefix string, a *Address) {
+	a.CountryCode = v.CountryCode(prefix+".countryCode", a.CountryCode, false)
 	if a.AddressID != "" {
 		// A saved address supplies the mandatory fields; only the identifier is
 		// validated here and the rest is filled in during resolution.

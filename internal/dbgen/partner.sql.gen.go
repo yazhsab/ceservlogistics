@@ -409,6 +409,7 @@ func (q *Queries) ExpireAPIKeys(ctx context.Context) error {
 const findAPIKeyByKeyID = `-- name: FindAPIKeyByKeyID :one
 SELECT k.id, k.public_id, k.organization_id, k.name, k.key_id, k.secret_hash, k.secret_hint, k.scopes, k.allowed_cidrs, k.status, k.expires_at, k.last_used_at, k.last_used_ip, k.request_count, k.rate_limit_per_minute, k.revoked_at, k.revoked_by, k.revoke_reason, k.created_by, k.created_at, k.updated_at, o.public_id AS organization_public_id, o.code AS organization_code,
        o.currency AS organization_currency, o.timezone AS organization_timezone,
+       o.country AS organization_country,
        o.awb_prefix AS organization_awb_prefix
 FROM api_keys k
 JOIN organizations o ON o.id = k.organization_id
@@ -441,6 +442,7 @@ type FindAPIKeyByKeyIDRow struct {
 	OrganizationCode      string
 	OrganizationCurrency  string
 	OrganizationTimezone  string
+	OrganizationCountry   string
 	OrganizationAwbPrefix string
 }
 
@@ -479,6 +481,7 @@ func (q *Queries) FindAPIKeyByKeyID(ctx context.Context, keyID string) (FindAPIK
 		&i.OrganizationCode,
 		&i.OrganizationCurrency,
 		&i.OrganizationTimezone,
+		&i.OrganizationCountry,
 		&i.OrganizationAwbPrefix,
 	)
 	return i, err

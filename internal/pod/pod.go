@@ -77,7 +77,39 @@ type Service struct {
 	urlTTL   time.Duration
 	// retention bounds how long evidence is kept. POD is normally required for
 	// the life of a commercial dispute, so the default is generous.
-	retention time.Duration
+	retention        time.Duration
+	captureObservers []CaptureObserver
+}
+
+// CaptureEvent is the append-only POD fact exposed to transactional outbox
+// observers. The artifact bytes remain private; integrations receive only the
+// evidence flags and stable identifiers.
+type CaptureEvent struct {
+	POD           dbgen.ProofOfDelivery
+	Shipment      dbgen.Shipment
+	ArtifactCount int
+}
+
+type CaptureObserver func(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, event CaptureEvent,
+) error
+
+// ObserveCapture registers a POD outbox observer at startup.
+func (s *Service) ObserveCapture(observer CaptureObserver) {
+	if observer != nil {
+		s.captureObservers = append(s.captureObservers, observer)
+	}
+}
+
+func (s *Service) runCaptureObservers(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, event CaptureEvent,
+) error {
+	for _, observer := range s.captureObservers {
+		if err := observer(ctx, tx, p, event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewService builds the POD service.
@@ -261,6 +293,11 @@ func (s *Service) Submit(ctx context.Context, p *tenant.Principal, in SubmitInpu
 			},
 		})); aErr != nil {
 			return apierr.Internal(aErr)
+		}
+		if oErr := s.runCaptureObservers(ctx, tx, p, CaptureEvent{
+			POD: created, Shipment: sh, ArtifactCount: len(stored),
+		}); oErr != nil {
+			return oErr
 		}
 
 		var dErr error

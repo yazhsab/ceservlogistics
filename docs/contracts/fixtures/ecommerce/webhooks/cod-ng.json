@@ -1,0 +1,14 @@
+{
+  "id": "evt_01K39A7B9C2D4E6F8G0H3JKMNP",
+  "type": "shipment.delivered",
+  "createdAt": "2026-08-24T08:45:02Z",
+  "data": {
+    "shipmentId": "shp_01K36G3F5P9YJ7M2E8Q4T6V0WX",
+    "awb": "CSV260823000001",
+    "status": "DELIVERED",
+    "fromStatus": "OUT_FOR_DELIVERY",
+    "occurredAt": "2026-08-24T08:45:00Z",
+    "reference": "ahiabekee:NG-MAIN:AHB-20260823-1001:F-1",
+    "reasonCode": null
+  }
+}

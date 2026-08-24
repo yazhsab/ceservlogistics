@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -376,6 +377,18 @@ func TestPartnerBookingRequiresAnIdempotencyKeyAndReplaysOnRetry(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("shipments = %d, want 1", n)
 	}
+	var ngSnapshots int
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT count(*)
+		FROM shipment_address_snapshots a
+		JOIN shipments s ON s.id = a.shipment_id
+		WHERE s.organization_id = $1 AND s.awb = $2 AND a.country_code = 'NG'`,
+		tn.OrgID, awb).Scan(&ngSnapshots); err != nil {
+		t.Fatal(err)
+	}
+	if ngSnapshots != 2 {
+		t.Fatalf("partner booking inherited %d NG address snapshots, want 2", ngSnapshots)
+	}
 }
 
 func TestPartnerBookingIsAttributedToTheKeyNotAUser(t *testing.T) {
@@ -533,6 +546,7 @@ func TestPartnerRequestsAreRecordedForBilling(t *testing.T) {
 type consumer struct {
 	mu        sync.Mutex
 	server    *httptest.Server
+	targetURL string
 	secret    string
 	received  []map[string]any
 	eventIDs  []string
@@ -584,8 +598,36 @@ func newConsumer(t *testing.T) *consumer {
 		c.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	// Registration sees a globally routable HTTPS address. The test client
+	// below rewrites that logical destination to the private httptest listener;
+	// production code never gets an exception to the SSRF policy.
+	c.targetURL = "https://93.184.216.34/webhooks/" + strings.ToLower(harness.RandomKey())
 	t.Cleanup(c.server.Close)
 	return c
+}
+
+type integrationRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f integrationRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func (c *consumer) client(t *testing.T) *http.Client {
+	t.Helper()
+	target, err := url.Parse(c.server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstream := c.server.Client().Transport
+	return &http.Client{Transport: integrationRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		clone := req.Clone(req.Context())
+		clone.URL = new(url.URL)
+		*clone.URL = *req.URL
+		clone.URL.Scheme = target.Scheme
+		clone.URL.Host = target.Host
+		clone.Host = target.Host
+		return upstream.RoundTrip(clone)
+	})}
 }
 
 func (c *consumer) count() int {
@@ -618,6 +660,112 @@ func TestWebhookEndpointMustBeHTTPS(t *testing.T) {
 	}
 }
 
+func TestPartnerKeyCanRegisterItsOwnWebhookEndpoint(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+	token, keyPublicID := issueKey(t, env, tn, "webhook-onboarding",
+		[]string{partner.ScopeWebhookManage})
+
+	target := "https://93.184.216.34/webhooks/" + strings.ToLower(harness.RandomKey())
+	resp := env.Do(t, http.MethodPost, "/api/v1/partner/webhooks/endpoints", token, map[string]any{
+		"name": "commerce-status", "url": target,
+		"events": []string{partner.EventShipmentBooked, partner.EventShipmentDelivered},
+	})
+	if resp.Status != http.StatusCreated {
+		t.Fatalf("partner endpoint registration: %d %s", resp.Status, resp.Raw)
+	}
+	if secret, _ := resp.Body["signingSecret"].(string); secret == "" {
+		t.Fatal("partner registration returned no one-time signing secret")
+	}
+
+	var storedKeyID *int64
+	var createdBy *int64
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT e.api_key_id, e.created_by
+		FROM webhook_endpoints e
+		JOIN api_keys k ON k.id = e.api_key_id
+		WHERE e.organization_id = $1 AND k.public_id = $2 AND e.url = $3`,
+		tn.OrgID, keyPublicID, target).Scan(&storedKeyID, &createdBy); err != nil {
+		t.Fatalf("read registered endpoint actor: %v", err)
+	}
+	if storedKeyID == nil || *storedKeyID == 0 {
+		t.Fatal("endpoint did not retain the creating API key")
+	}
+	if createdBy != nil {
+		t.Fatalf("API-key endpoint has a user foreign key: %d", *createdBy)
+	}
+}
+
+func TestWebhookRegistrationRejectsInternalAndAmbiguousDestinations(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+
+	for _, rawURL := range []string{
+		"https://127.0.0.1/hook",
+		"https://10.0.0.8/hook",
+		"https://169.254.169.254/latest/meta-data",
+		"https://[::1]/hook",
+		"https://[fd00::1]/hook",
+		"https://user:password@93.184.216.34/hook",
+		"https://93.184.216.34:8443/hook",
+	} {
+		resp := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok,
+			map[string]any{
+				"name": "unsafe", "url": rawURL,
+				"events": []string{partner.EventShipmentDelivered},
+			})
+		if resp.Status != http.StatusUnprocessableEntity {
+			t.Errorf("unsafe URL %q returned %d, want 422: %s", rawURL, resp.Status, resp.Raw)
+		}
+	}
+}
+
+func TestWebhookDeliveryDoesNotFollowRedirects(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+	target := "https://93.184.216.34/webhooks/" + strings.ToLower(harness.RandomKey())
+
+	created := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok,
+		map[string]any{
+			"name": "redirector", "url": target,
+			"events": []string{partner.EventShipmentBooked},
+		})
+	if created.Status != http.StatusCreated {
+		t.Fatalf("create endpoint: %d %s", created.Status, created.Raw)
+	}
+
+	calls := 0
+	env.App.Webhooks.SetHTTPClient(&http.Client{Transport: integrationRoundTripFunc(
+		func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": []string{"https://127.0.0.1/internal"}},
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+				Request:    req,
+			}, nil
+		},
+	)})
+
+	bookOne(t, env, tn)
+	drainWebhooks(t, env, tn.OrgID)
+	if calls != 1 {
+		t.Fatalf("redirect caused %d outbound requests, want exactly one", calls)
+	}
+	var statusCode *int32
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT status_code FROM webhook_attempts WHERE organization_id = $1`, tn.OrgID).
+		Scan(&statusCode); err != nil {
+		t.Fatal(err)
+	}
+	if statusCode == nil || *statusCode != http.StatusFound {
+		t.Fatalf("redirect attempt status = %v, want 302", statusCode)
+	}
+}
+
 func TestWebhookSignatureIsVerifiableByAConsumer(t *testing.T) {
 	env := harness.Start(t)
 	env.Reset(t)
@@ -625,7 +773,7 @@ func TestWebhookSignatureIsVerifiableByAConsumer(t *testing.T) {
 	c := newConsumer(t)
 
 	created := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok, map[string]any{
-		"name": "verifier", "url": c.server.URL,
+		"name": "verifier", "url": c.targetURL,
 		"events": []string{partner.EventShipmentBooked},
 	})
 	if created.Status != http.StatusCreated {
@@ -642,7 +790,7 @@ func TestWebhookSignatureIsVerifiableByAConsumer(t *testing.T) {
 	// The endpoint uses a self-signed certificate, so the delivery client must
 	// be the test server's. Deliver through the service directly rather than
 	// through the worker, which is what this test is about.
-	env.App.Webhooks.SetHTTPClient(c.server.Client())
+	env.App.Webhooks.SetHTTPClient(c.client(t))
 
 	bookOne(t, env, tn)
 	drainWebhooks(t, env, tn.OrgID)
@@ -672,7 +820,7 @@ func TestWebhookRetriesUntilTheConsumerRecovers(t *testing.T) {
 	c.failFirst = 2
 
 	created := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok, map[string]any{
-		"name": "flaky", "url": c.server.URL,
+		"name": "flaky", "url": c.targetURL,
 		"events": []string{partner.EventShipmentBooked},
 	})
 	if created.Status != http.StatusCreated {
@@ -682,7 +830,7 @@ func TestWebhookRetriesUntilTheConsumerRecovers(t *testing.T) {
 	c.mu.Lock()
 	c.secret = secret
 	c.mu.Unlock()
-	env.App.Webhooks.SetHTTPClient(c.server.Client())
+	env.App.Webhooks.SetHTTPClient(c.client(t))
 
 	bookOne(t, env, tn)
 
@@ -733,7 +881,7 @@ func TestWebhookDeadLettersAfterTheAttemptBudget(t *testing.T) {
 	c.failFirst = 1000 // never recovers
 
 	created := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok, map[string]any{
-		"name": "dead", "url": c.server.URL,
+		"name": "dead", "url": c.targetURL,
 		"events": []string{partner.EventShipmentBooked},
 	})
 	if created.Status != http.StatusCreated {
@@ -743,7 +891,7 @@ func TestWebhookDeadLettersAfterTheAttemptBudget(t *testing.T) {
 	c.mu.Lock()
 	c.secret = secret
 	c.mu.Unlock()
-	env.App.Webhooks.SetHTTPClient(c.server.Client())
+	env.App.Webhooks.SetHTTPClient(c.client(t))
 
 	bookOne(t, env, tn)
 	for i := 0; i < 8; i++ {
@@ -778,7 +926,7 @@ func TestOneBusinessEventProducesOneDeliveryPerEndpoint(t *testing.T) {
 	for _, name := range []string{"first", "second"} {
 		c := newConsumer(t)
 		resp := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok, map[string]any{
-			"name": name, "url": c.server.URL,
+			"name": name, "url": c.targetURL,
 			"events": []string{partner.EventShipmentBooked},
 		})
 		if resp.Status != http.StatusCreated {
@@ -824,7 +972,7 @@ func TestWebhookReplayIsANewDeliveryNotAReset(t *testing.T) {
 	c := newConsumer(t)
 
 	created := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok, map[string]any{
-		"name": "replayed", "url": c.server.URL,
+		"name": "replayed", "url": c.targetURL,
 		"events": []string{partner.EventShipmentBooked},
 	})
 	if created.Status != http.StatusCreated {
@@ -834,7 +982,7 @@ func TestWebhookReplayIsANewDeliveryNotAReset(t *testing.T) {
 	c.mu.Lock()
 	c.secret = secret
 	c.mu.Unlock()
-	env.App.Webhooks.SetHTTPClient(c.server.Client())
+	env.App.Webhooks.SetHTTPClient(c.client(t))
 
 	bookOne(t, env, tn)
 	drainWebhooks(t, env, tn.OrgID)
@@ -894,7 +1042,7 @@ func TestWebhookDeliveriesAreTenantScoped(t *testing.T) {
 	c := newConsumer(t)
 	if resp := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", beta.AdminAccessTok,
 		map[string]any{
-			"name": "beta-hook", "url": c.server.URL,
+			"name": "beta-hook", "url": c.targetURL,
 			"events": []string{partner.EventShipmentBooked},
 		}); resp.Status != http.StatusCreated {
 		t.Fatalf("create beta endpoint: %d %s", resp.Status, resp.Raw)
@@ -930,9 +1078,150 @@ func TestUnknownEventTypeIsRejectedAtSubscription(t *testing.T) {
 	}
 }
 
+func TestPickupCompletedEventIsQueuedAtomically(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+	registerEventEndpoint(t, env, tn, partner.EventPickupCompleted)
+
+	start := time.Now().UTC().Add(2 * time.Hour)
+	created := env.Do(t, http.MethodPost, "/api/v1/pickups", tn.AdminAccessTok, map[string]any{
+		"customerId": tn.CustomerPublicID, "pickupType": "SCHEDULED",
+		"contactName": "Warehouse Team", "contactPhone": "+2348012345678",
+		"line1": "12 Commerce Road", "city": "Lagos", "state": "Lagos",
+		"pincode":       tn.OriginPincode,
+		"scheduledDate": start.Format("2006-01-02"),
+		"windowStart":   start.Format(time.RFC3339), "windowEnd": start.Add(2 * time.Hour).Format(time.RFC3339),
+		"expectedPieceCount": 1,
+	})
+	if created.Status != http.StatusCreated {
+		t.Fatalf("create pickup: %d %s", created.Status, created.Raw)
+	}
+	pickupID, _ := created.Body["id"].(string)
+	_, agentID, agentToken := env.NewUser(t, tn.OrgID,
+		"pickup-"+strings.ToLower(harness.RandomKey()[:8])+"@test.local",
+		"PICKUP_AGENT", &tn.OriginBranchID)
+
+	assigned := env.Do(t, http.MethodPost, "/api/v1/pickups/"+pickupID+"/assign",
+		tn.AdminAccessTok, map[string]any{"agentId": agentID})
+	if assigned.Status != http.StatusOK {
+		t.Fatalf("assign pickup: %d %s", assigned.Status, assigned.Raw)
+	}
+	assignment, _ := assigned.Body["assignment"].(map[string]any)
+	assignmentID, _ := assignment["id"].(string)
+	accepted := env.Do(t, http.MethodPost,
+		"/api/v1/pickups/assignments/"+assignmentID+"/respond", agentToken,
+		map[string]any{"accept": true})
+	if accepted.Status != http.StatusOK {
+		t.Fatalf("accept pickup: %d %s", accepted.Status, accepted.Raw)
+	}
+
+	completed := env.Do(t, http.MethodPost, "/api/v1/pickups/"+pickupID+"/complete",
+		agentToken, map[string]any{"outcome": "COMPLETED", "loosePieces": 1})
+	if completed.Status != http.StatusOK {
+		t.Fatalf("complete pickup: %d %s", completed.Status, completed.Raw)
+	}
+	payload := queuedEventPayload(t, env, tn.OrgID, partner.EventPickupCompleted)
+	data, _ := payload["data"].(map[string]any)
+	if data["pickupRequestId"] != pickupID || data["status"] != "COMPLETED" {
+		t.Fatalf("pickup event payload is not the committed completion: %v", payload)
+	}
+}
+
+func TestPODCapturedEventIsQueuedAtomically(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+	registerEventEndpoint(t, env, tn, partner.EventPODCaptured)
+
+	j := newJourney(t, env, tn)
+	j.toOriginBranch(t)
+	j.bagAndManifest(t)
+	j.lineHaul(t)
+	runID := j.dispatchForDelivery(t)
+	j.post(t, "/api/v1/deliveries/attempts", map[string]any{
+		"barcode": j.awb, "outcome": "DELIVERED", "runId": runID,
+		"recipientName": "A Buyer", "recipientRelationship": "SELF",
+	}, http.StatusOK, [2]string{"Idempotency-Key", "deliver-" + harness.RandomKey()})
+
+	podResponse := env.UploadPOD(t, j.token, j.awb, tn.DestBranchPubID)
+	if podResponse.Status != http.StatusCreated {
+		t.Fatalf("capture POD: %d %s", podResponse.Status, podResponse.Raw)
+	}
+	payload := queuedEventPayload(t, env, tn.OrgID, partner.EventPODCaptured)
+	data, _ := payload["data"].(map[string]any)
+	if data["shipmentId"] != j.shipID || data["awb"] != j.awb || data["artifactCount"] != float64(1) {
+		t.Fatalf("POD event payload is not the committed evidence: %v", payload)
+	}
+}
+
+func TestCODCollectedEventIsQueuedAsPendingReconciliation(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	tn := partnerTenant(t, env)
+	registerEventEndpoint(t, env, tn, partner.EventCODCollected)
+
+	const amount = int64(175000)
+	j, runID := codJourney(t, env, tn, amount)
+	j.post(t, "/api/v1/deliveries/attempts", map[string]any{
+		"barcode": j.awb, "outcome": "DELIVERED", "runId": runID,
+		"recipientName": "A Buyer", "recipientRelationship": "SELF",
+		"codCollectedMinor": amount, "codPaymentMode": "CASH",
+	}, http.StatusOK, [2]string{"Idempotency-Key", "deliver-" + harness.RandomKey()})
+
+	collected := env.Do(t, http.MethodPost, "/api/v1/cod/collections", j.token, map[string]any{
+		"shipmentId": j.shipID, "amountMinor": amount, "paymentMode": "CASH",
+		"reference": "CASH-" + harness.RandomKey()[:8],
+	})
+	if collected.Status != http.StatusOK {
+		t.Fatalf("record COD collection: %d %s", collected.Status, collected.Raw)
+	}
+	payload := queuedEventPayload(t, env, tn.OrgID, partner.EventCODCollected)
+	data, _ := payload["data"].(map[string]any)
+	if data["shipmentId"] != j.shipID || data["amountMinor"] != float64(amount) ||
+		data["reconciliationStatus"] != "PENDING" {
+		t.Fatalf("COD event payload conflates collection and settlement: %v", payload)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+func registerEventEndpoint(
+	t *testing.T, env *harness.Env, tn *harness.Tenant, eventType string,
+) {
+	t.Helper()
+	resp := env.Do(t, http.MethodPost, "/api/v1/webhooks/endpoints", tn.AdminAccessTok,
+		map[string]any{
+			"name":   "producer-" + strings.ReplaceAll(eventType, ".", "-"),
+			"url":    "https://93.184.216.34/webhooks/" + strings.ToLower(harness.RandomKey()),
+			"events": []string{eventType},
+		})
+	if resp.Status != http.StatusCreated {
+		t.Fatalf("register %s endpoint: %d %s", eventType, resp.Status, resp.Raw)
+	}
+}
+
+func queuedEventPayload(
+	t *testing.T, env *harness.Env, orgID int64, eventType string,
+) map[string]any {
+	t.Helper()
+	var raw []byte
+	if err := env.DB.Pool.QueryRow(context.Background(), `
+		SELECT payload FROM webhook_deliveries
+		WHERE organization_id = $1 AND event_type = $2`, orgID, eventType).Scan(&raw); err != nil {
+		t.Fatalf("read queued %s event: %v", eventType, err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode queued %s event: %v", eventType, err)
+	}
+	if payload["type"] != eventType || payload["id"] == "" {
+		t.Fatalf("invalid %s event envelope: %v", eventType, payload)
+	}
+	return payload
+}
 
 // book creates one shipment through the staff API, which is what raises the
 // shipment.booked event the webhook tests observe.

@@ -1,0 +1,14 @@
+{
+  "id": "evt_01K37N8P0Q2R4S6T9V3W5X7YZA",
+  "type": "shipment.in_transit",
+  "createdAt": "2026-08-23T14:10:03Z",
+  "data": {
+    "shipmentId": "shp_01K36G4A7B9C2D4E6F8G0H3JKM",
+    "awb": "CSV260823000002",
+    "status": "IN_TRANSIT",
+    "fromStatus": "ORIGIN_DISPATCHED",
+    "occurredAt": "2026-08-23T14:10:00Z",
+    "reference": "ahiabekee:NG-MAIN:AHB-20260823-1002:F-1",
+    "reasonCode": null
+  }
+}

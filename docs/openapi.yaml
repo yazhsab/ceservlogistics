@@ -6767,8 +6767,11 @@ paths:
         Requires the `webhook:manage` scope, so an integration can configure
         itself without a person logging in.
 
-        The URL must be HTTPS — payloads carry customer data — and the signing
-        secret is returned **once**.
+        The URL must be a public HTTPS destination on port 443 — payloads carry
+        customer data — and the signing secret is returned **once**. Userinfo,
+        local/private/special-use IPs, cloud metadata targets, and redirects are
+        rejected. DNS is checked at registration and again immediately before
+        every connection.
       requestBody:
         required: true
         content:
@@ -6783,7 +6786,7 @@ paths:
         "403":
           $ref: "#/components/responses/PartnerScopeMissing"
         "422":
-          description: The URL is not HTTPS, or an event type is unknown.
+          description: The URL is not a safe public HTTPS destination, or an event type is unknown.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -7021,7 +7024,10 @@ paths:
       summary: Register a webhook endpoint
       operationId: createWebhookEndpoint
       description: |
-        Requires `webhook.manage`. The URL must be HTTPS. The signing secret is
+        Requires `webhook.manage`. The URL must be a public HTTPS destination
+        on port 443. Userinfo, local/private/special-use IPs, cloud metadata
+        targets, and redirects are rejected. DNS is checked at registration and
+        again immediately before every connection. The signing secret is
         returned once and is not recoverable.
       requestBody:
         required: true
@@ -7035,7 +7041,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CreatedWebhookEndpoint" }
         "422":
-          description: The URL is not HTTPS, or an event type is unknown.
+          description: The URL is not a safe public HTTPS destination, or an event type is unknown.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
@@ -9036,8 +9042,13 @@ components:
     Pincode:
       type: string
       pattern: "^[1-9][0-9]{5}$"
-      description: A six-digit Indian PIN code.
-      examples: ["560001"]
+      description: |
+        A six-digit postal code used as the current serviceability key. The
+        configured Nigerian and Indian datasets both use this wire shape;
+        always send `BookingAddress.countryCode` so the value is resolved in
+        the correct country. Lagos `100001` and Abuja `900001` are Nigerian
+        examples.
+      examples: ["100001", "900001"]
     Code:
       type: string
       pattern: "^[A-Z0-9][A-Z0-9_-]{1,31}$"
@@ -10117,28 +10128,37 @@ components:
       example:
         customerId: cus_01KZGDG8P5STK8J27R79PSS4HE
         serviceCode: EXPRESS
-        paymentMode: PREPAID
-        referenceNumber: PO-12345
+        paymentMode: COD
+        referenceNumber: ahiabekee:NG-MAIN:AHB-20260823-1001:F-1
         sender:
-          contactName: Anita Rao
-          phone: "+919800000001"
-          line1: 12 Church Street
-          city: Bengaluru
-          state: Karnataka
-          pincode: "560001"
+          contactName: Ada Okafor
+          companyName: Ahiabekee Lagos Fulfilment Centre
+          phone: "+2348012345601"
+          line1: 12 Warehouse Avenue
+          city: Ikeja
+          state: Lagos
+          pincode: "100001"
+          countryCode: NG
         recipient:
-          contactName: Vikram Singh
-          phone: "+919800000002"
-          line1: 34 Connaught Place
-          city: New Delhi
-          state: Delhi
-          pincode: "110001"
+          contactName: Chinedu Eze
+          phone: "+2348012345602"
+          line1: 25 Example Crescent
+          city: Abuja
+          state: Federal Capital Territory
+          pincode: "900001"
+          countryCode: NG
         packages:
-          - actualWeightGrams: 500
-            lengthMm: 200
-            widthMm: 150
-            heightMm: 100
-        contentDescription: Documents
+          - reference: AHB-1001-P1
+            actualWeightGrams: 1800
+            lengthMm: 400
+            widthMm: 300
+            heightMm: 250
+            contentDescription: Home appliances
+            declaredValueMinor: 15000000
+        declaredValueMinor: 15000000
+        codAmountMinor: 16625000
+        insuranceRequired: true
+        contentDescription: Home appliances
     BookingAddress:
       type: object
       description: |
@@ -10159,7 +10179,16 @@ components:
         city: { type: string }
         state: { type: string }
         pincode: { $ref: "#/components/schemas/Pincode" }
-        countryCode: { type: string, default: "NG" }
+        countryCode:
+          type: string
+          pattern: '^[A-Z]{2}$'
+          description: |
+            ISO-3166 alpha-2. Ecommerce connectors always send this explicitly;
+            when an older direct-booking client omits it, the authenticated
+            organization's country is used, falling back to the configured
+            platform default (`NG`) only if the organization has none. The same
+            resolved country is used for postal-code lookup and the immutable
+            address snapshot.
         latitude: { type: number }
         longitude: { type: number }
     ShipmentListItem:
@@ -13139,6 +13168,213 @@ components:
         - pod.captured
         - cod.collected
 
+    EcommerceBookingResponseV1:
+      description: |
+        The minimum successful `POST /api/v1/partner/shipments` response fields
+        the ecommerce connector persists. The full response is `Shipment`;
+        this profile makes connector dependencies explicit and testable.
+      allOf:
+        - $ref: "#/components/schemas/Shipment"
+        - type: object
+          required:
+            - id
+            - awb
+            - referenceNumber
+            - status
+            - paymentMode
+            - bookedAt
+            - customer
+            - service
+            - packages
+            - pieceCount
+            - currency
+            - declaredValueMinor
+            - codAmountMinor
+            - totalAmountMinor
+          properties:
+            id: { type: string, pattern: '^shp_[0-9A-HJKMNP-TV-Z]{26}$' }
+            awb: { type: string, pattern: "^[A-Z]{2,4}[0-9]{12}$" }
+            referenceNumber: { type: string, minLength: 1, maxLength: 64 }
+            status: { type: string, enum: [BOOKED] }
+            paymentMode: { $ref: "#/components/schemas/PaymentMode" }
+            bookedAt: { type: string, format: date-time }
+            customer:
+              type: object
+              required: [id, code]
+              properties:
+                id: { type: string, pattern: '^cus_[0-9A-HJKMNP-TV-Z]{26}$' }
+                code: { type: string }
+                name: { type: string }
+            service:
+              type: object
+              required: [code]
+              properties:
+                id: { type: string }
+                code: { type: string }
+                name: { type: string }
+            packages:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [id, sequence, pieceBarcode, actualWeightGrams, declaredValueMinor]
+                properties:
+                  id: { type: string, pattern: '^pkg_[0-9A-HJKMNP-TV-Z]{26}$' }
+                  sequence: { type: integer, minimum: 1 }
+                  pieceBarcode: { type: string }
+                  reference: { type: string }
+                  actualWeightGrams: { type: integer, minimum: 1 }
+                  declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+            pieceCount: { type: integer, minimum: 1 }
+            currency: { type: string, pattern: '^[A-Z]{3}$' }
+            declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+            codAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
+            totalAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
+
+    PartnerWebhookEnvelope:
+      type: object
+      additionalProperties: false
+      description: |
+        Exact top-level bytes queued and signed by C-Serve. `Webhook-Id` equals
+        `id`, `Webhook-Event` equals `type`, and `createdAt` is when the
+        delivery payload was frozen. Consumers deduplicate on `id`.
+      required: [id, type, createdAt, data]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 64 }
+        type: { $ref: "#/components/schemas/WebhookEventType" }
+        createdAt: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
+
+    PartnerShipmentWebhookData:
+      type: object
+      additionalProperties: false
+      required: [shipmentId, awb, status, fromStatus, occurredAt, reference, reasonCode]
+      properties:
+        shipmentId: { type: string, pattern: '^shp_[0-9A-HJKMNP-TV-Z]{26}$' }
+        awb:
+          type: string
+          pattern: "^[A-Z]{2,4}[0-9]{12}$"
+        status: { $ref: "#/components/schemas/ShipmentStatus" }
+        fromStatus:
+          type: string
+          description: Previous shipment status; empty only when no prior status exists.
+        occurredAt: { type: string, format: date-time }
+        reference: { type: string, maxLength: 64 }
+        reasonCode: { type: string, nullable: true }
+
+    PartnerShipmentStatusWebhookEnvelope:
+      description: The exact envelope for the published `shipment.*` lifecycle events.
+      allOf:
+        - $ref: "#/components/schemas/PartnerWebhookEnvelope"
+        - type: object
+          required: [id, type, data]
+          properties:
+            id: { type: string, pattern: '^evt_[0-9A-HJKMNP-TV-Z]{26}$' }
+            type:
+              type: string
+              enum:
+                - shipment.booked
+                - shipment.picked_up
+                - shipment.in_transit
+                - shipment.out_for_delivery
+                - shipment.delivered
+                - shipment.delivery_failed
+                - shipment.ndr
+                - shipment.rto_initiated
+                - shipment.rto_delivered
+                - shipment.cancelled
+                - shipment.lost
+                - shipment.damaged
+            data: { $ref: "#/components/schemas/PartnerShipmentWebhookData" }
+
+    PartnerPickupCompletedWebhookData:
+      type: object
+      additionalProperties: false
+      required: [pickupRequestId, reference, attemptId, status, outcome, occurredAt, piecesCollected, shipments]
+      properties:
+        pickupRequestId: { type: string, pattern: '^pkr_[0-9A-HJKMNP-TV-Z]{26}$' }
+        reference: { type: string }
+        attemptId: { type: string, pattern: '^pat_[0-9A-HJKMNP-TV-Z]{26}$' }
+        status: { type: string, enum: [COMPLETED, PARTIALLY_COMPLETED] }
+        outcome: { type: string, enum: [COMPLETED, PARTIAL] }
+        occurredAt: { type: string, format: date-time }
+        piecesCollected: { type: integer, minimum: 0 }
+        shipments:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [shipmentId, awb]
+            properties:
+              shipmentId: { type: string, pattern: '^shp_[0-9A-HJKMNP-TV-Z]{26}$' }
+              awb: { type: string, pattern: "^[A-Z]{2,4}[0-9]{12}$" }
+
+    PartnerPickupCompletedWebhookEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/PartnerWebhookEnvelope"
+        - type: object
+          required: [id, type, data]
+          properties:
+            id: { type: string, pattern: '^pat_[0-9A-HJKMNP-TV-Z]{26}$' }
+            type: { type: string, enum: [pickup.completed] }
+            data: { $ref: "#/components/schemas/PartnerPickupCompletedWebhookData" }
+
+    PartnerPODCapturedWebhookData:
+      type: object
+      additionalProperties: false
+      required: [podId, shipmentId, awb, podType, deliveredAt, recordedAt, otpVerified, signatureCaptured, photoCaptured, artifactCount]
+      properties:
+        podId: { type: string, pattern: '^pod_[0-9A-HJKMNP-TV-Z]{26}$' }
+        shipmentId: { type: string, pattern: '^shp_[0-9A-HJKMNP-TV-Z]{26}$' }
+        awb: { type: string, pattern: "^[A-Z]{2,4}[0-9]{12}$" }
+        podType: { type: string, enum: [DELIVERY, RTO_RETURN, CUSTOMER_PICKUP, HANDOVER] }
+        deliveredAt: { type: string, format: date-time }
+        recordedAt: { type: string, format: date-time }
+        otpVerified: { type: boolean }
+        signatureCaptured: { type: boolean }
+        photoCaptured: { type: boolean }
+        artifactCount: { type: integer, minimum: 0 }
+
+    PartnerPODCapturedWebhookEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/PartnerWebhookEnvelope"
+        - type: object
+          required: [id, type, data]
+          properties:
+            id: { type: string, pattern: '^pod_[0-9A-HJKMNP-TV-Z]{26}$' }
+            type: { type: string, enum: [pod.captured] }
+            data: { $ref: "#/components/schemas/PartnerPODCapturedWebhookData" }
+
+    PartnerCODCollectedWebhookData:
+      type: object
+      additionalProperties: false
+      required: [collectionId, shipmentId, awb, amountMinor, currency, paymentMode, collectedAt, custodyStatus, reconciliationStatus]
+      properties:
+        collectionId: { type: string, pattern: '^cdc_[0-9A-HJKMNP-TV-Z]{26}$' }
+        shipmentId: { type: string, pattern: '^shp_[0-9A-HJKMNP-TV-Z]{26}$' }
+        awb: { type: string, pattern: "^[A-Z]{2,4}[0-9]{12}$" }
+        amountMinor: { $ref: "#/components/schemas/MinorAmount" }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        paymentMode: { type: string, enum: [CASH, UPI, CARD, WALLET, BANK_TRANSFER, CHEQUE] }
+        collectedAt: { type: string, format: date-time }
+        custodyStatus: { type: string, enum: [AGENT_COLLECTED] }
+        reconciliationStatus:
+          type: string
+          const: PENDING
+          description: Collection is not merchant payment settlement.
+
+    PartnerCODCollectedWebhookEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/PartnerWebhookEnvelope"
+        - type: object
+          required: [id, type, data]
+          properties:
+            id: { type: string, pattern: '^cdc_[0-9A-HJKMNP-TV-Z]{26}$' }
+            type: { type: string, enum: [cod.collected] }
+            data: { $ref: "#/components/schemas/PartnerCODCollectedWebhookData" }
+
     CreateWebhookEndpointRequest:
       type: object
       required: [name, url, events]
@@ -13147,7 +13383,10 @@ components:
         url:
           type: string
           format: uri
-          description: Must be HTTPS. Payloads carry customer data.
+          description: |
+            Public HTTPS URL on port 443. Userinfo, redirects, local/private,
+            link-local, multicast, unspecified, ULA, special-use, and cloud
+            metadata targets are rejected. Every DNS answer must be public.
           pattern: '^https://'
         events:
           type: array
@@ -13189,6 +13428,8 @@ components:
             timestamp: { type: string, example: Webhook-Timestamp }
             toleranceSec:
               type: integer
+              const: 300
+              example: 300
               description: |
                 Reject a timestamp older than this. Including the timestamp in
                 the signed string is what makes a captured request
@@ -13228,8 +13469,7 @@ components:
           properties:
             url: { type: string, format: uri }
             payload:
-              type: object
-              additionalProperties: true
+              $ref: "#/components/schemas/PartnerWebhookEnvelope"
               description: The exact bytes that were signed and sent.
 
     WebhookDeliveryPage:

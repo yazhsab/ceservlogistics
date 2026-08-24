@@ -152,7 +152,7 @@ perfect coverage.
 | **RISK ACCEPTED** | Hosting security controls are unverified | Validate TLS, HSTS, CSP, framing, referrer/permissions policy, authenticated cache headers, secret redaction, and request-ID observability in staging. |
 | **RISK ACCEPTED** | No cross-browser/device-lab sign-off | Run current Chrome, Edge, Firefox, iOS Safari, and Android Chrome smoke tests plus a physical scanner/mobile workflow session. |
 | **RISK ACCEPTED** | No manual screen-reader sign-off | Run VoiceOver and NVDA on sign-in, booking, scanner, settlement approval, customer tracking, and credential secret disclosure. |
-| **RISK ACCEPTED** | Notification/integration runtime limitations | Real notification providers are not registered; `pod.captured` and `cod.collected` webhook events are not emitted; stored webhook filters are not applied. UI copy does not claim otherwise. |
+| **RISK ACCEPTED** | Notification/integration runtime limitations | Real notification providers are not registered and stored webhook filters are not applied. Phase 2 added transactional producers for every published webhook event. |
 | **RISK ACCEPTED** | Country-neutral transport fields remain incomplete | OpenAPI retains legacy `pincode`, `gstNumber`, and `panNumber` names/patterns. UI presents Nigerian postal code, TIN, and CAC/RC terminology without changing the wire contract. |
 | **RISK ACCEPTED** | Public initial bundle has removable code | Lighthouse reports about 94 KiB potential unused JavaScript. Current performance is strong, but CI should add route-specific gzip and Lighthouse budgets. |
 

@@ -16,6 +16,13 @@ node_modules/
 tests/load/results/
 deploy/nginx/certs/
 deploy/backups/
+backups/
+
+# Flutter mobile build and tool state.
+mobile/**/.dart_tool/
+mobile/**/build/
+mobile/**/.flutter-plugins
+mobile/**/.flutter-plugins-dependencies
 
 # Deployment-simulation artefacts: self-signed certs, a throwaway env file and
 # local dumps. The simulation overlay itself is committed; its secrets are not.

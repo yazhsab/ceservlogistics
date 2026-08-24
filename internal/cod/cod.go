@@ -113,12 +113,37 @@ const (
 
 // Service owns COD custody and its ledger effects.
 type Service struct {
-	db      *database.DB
-	q       *dbgen.Queries
-	ledger  *ledger.Service
-	audit   *audit.Recorder
-	log     *slog.Logger
-	metrics *telemetry.Metrics
+	db                  *database.DB
+	q                   *dbgen.Queries
+	ledger              *ledger.Service
+	audit               *audit.Recorder
+	log                 *slog.Logger
+	metrics             *telemetry.Metrics
+	collectionObservers []CollectionObserver
+}
+
+// CollectionObserver receives a newly committed-to-the-transaction COD
+// collection. It runs before commit and must only enqueue durable work.
+type CollectionObserver func(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, result *CollectResult,
+) error
+
+// ObserveCollection registers a COD collection outbox observer at startup.
+func (s *Service) ObserveCollection(observer CollectionObserver) {
+	if observer != nil {
+		s.collectionObservers = append(s.collectionObservers, observer)
+	}
+}
+
+func (s *Service) runCollectionObservers(
+	ctx context.Context, tx pgx.Tx, p *tenant.Principal, result *CollectResult,
+) error {
+	for _, observer := range s.collectionObservers {
+		if err := observer(ctx, tx, p, result); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func NewService(
@@ -427,7 +452,11 @@ func (s *Service) RecordCollection(
 		return nil, apierr.Internal(err)
 	}
 
-	return &CollectResult{Obligation: updated, Collection: collection}, nil
+	result = &CollectResult{Obligation: updated, Collection: collection}
+	if err := s.runCollectionObservers(ctx, tx, p, result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

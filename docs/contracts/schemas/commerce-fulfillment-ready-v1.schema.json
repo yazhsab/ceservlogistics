@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.cserve.example/ecommerce/commerce-fulfillment-ready-v1.schema.json",
+  "title": "CommerceFulfillmentReady/v1",
+  "description": "The platform-neutral message emitted only after a commerce fulfillment has complete sender, recipient, parcel, payment, and merchant-routing data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventType",
+    "eventId",
+    "occurredAt",
+    "platform",
+    "store",
+    "order",
+    "fulfillment",
+    "merchant",
+    "referenceNumber",
+    "serviceCode",
+    "sender",
+    "recipient",
+    "packages",
+    "payment",
+    "declaredValueMinor",
+    "insuranceRequired",
+    "contentDescription",
+    "isFragile",
+    "isDangerousGoods",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "CommerceFulfillmentReady/v1" },
+    "eventType": { "const": "commerce.fulfillment_ready" },
+    "eventId": { "$ref": "#/$defs/externalId" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "platform": {
+      "type": "string",
+      "enum": ["ahiabekee", "shopify", "woocommerce"]
+    },
+    "store": { "$ref": "#/$defs/store" },
+    "order": { "$ref": "#/$defs/order" },
+    "fulfillment": { "$ref": "#/$defs/fulfillment" },
+    "merchant": { "$ref": "#/$defs/merchant" },
+    "referenceNumber": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "serviceCode": {
+      "type": "string",
+      "pattern": "^[A-Z0-9][A-Z0-9_-]{1,31}$"
+    },
+    "bookingUnitId": {
+      "type": "string",
+      "pattern": "^ou_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "sender": {
+      "allOf": [
+        { "$ref": "#/$defs/address" },
+        { "not": { "required": ["externalCustomerId"] } }
+      ]
+    },
+    "recipient": { "$ref": "#/$defs/address" },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/package" }
+    },
+    "payment": { "$ref": "#/$defs/payment" },
+    "declaredValueMinor": { "$ref": "#/$defs/minorAmount" },
+    "insuranceRequired": { "type": "boolean" },
+    "contentDescription": { "type": "string", "minLength": 2, "maxLength": 500 },
+    "specialInstructions": { "type": "string", "maxLength": 1000 },
+    "isFragile": { "type": "boolean" },
+    "isDangerousGoods": { "type": "boolean" },
+    "metadata": { "$ref": "#/$defs/metadata" }
+  },
+  "$defs": {
+    "externalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "minorAmount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "code", "name", "countryCode", "currency"],
+      "properties": {
+        "id": { "$ref": "#/$defs/externalId" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "countryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "order": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "number", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/externalId" },
+        "number": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "fulfillment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "number", "version", "readyAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/externalId" },
+        "number": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "integer", "minimum": 1 },
+        "readyAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "merchant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logisticsCustomerId"],
+      "properties": {
+        "logisticsCustomerId": {
+          "type": "string",
+          "pattern": "^cus_[0-9A-HJKMNP-TV-Z]{26}$"
+        }
+      }
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contactName", "phone", "line1", "city", "state", "pincode", "countryCode"],
+      "properties": {
+        "externalCustomerId": { "$ref": "#/$defs/externalId" },
+        "contactName": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "companyName": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "pattern": "^\\+?[0-9][0-9 -]{5,19}$" },
+        "altPhone": { "type": "string", "pattern": "^\\+?[0-9][0-9 -]{5,19}$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "line1": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "line2": { "type": "string", "maxLength": 200 },
+        "landmark": { "type": "string", "maxLength": 120 },
+        "city": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "state": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "pincode": { "type": "string", "pattern": "^[1-9][0-9]{5}$" },
+        "countryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "actualWeightGrams",
+        "lengthMm",
+        "widthMm",
+        "heightMm",
+        "contentDescription",
+        "declaredValueMinor"
+      ],
+      "properties": {
+        "reference": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "actualWeightGrams": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "lengthMm": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "widthMm": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "heightMm": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "contentDescription": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "declaredValueMinor": { "$ref": "#/$defs/minorAmount" }
+      }
+    },
+    "payment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "currency",
+        "merchandiseSubtotalMinor",
+        "discountMinor",
+        "taxMinor",
+        "shippingChargeMinor",
+        "prepaidAmountMinor",
+        "storeCreditAppliedMinor",
+        "orderTotalMinor"
+      ],
+      "properties": {
+        "mode": { "type": "string", "enum": ["PREPAID", "COD"] },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "merchandiseSubtotalMinor": { "$ref": "#/$defs/minorAmount" },
+        "discountMinor": { "$ref": "#/$defs/minorAmount" },
+        "taxMinor": { "$ref": "#/$defs/minorAmount" },
+        "shippingChargeMinor": { "$ref": "#/$defs/minorAmount" },
+        "prepaidAmountMinor": { "$ref": "#/$defs/minorAmount" },
+        "storeCreditAppliedMinor": { "$ref": "#/$defs/minorAmount" },
+        "orderTotalMinor": { "$ref": "#/$defs/minorAmount" },
+        "codAmountMinor": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "if": {
+        "properties": { "mode": { "const": "COD" } },
+        "required": ["mode"]
+      },
+      "then": { "required": ["codAmountMinor"] },
+      "else": { "not": { "required": ["codAmountMinor"] } }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceChannel": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "salesChannel": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "customerNoteReference": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    }
+  }
+}

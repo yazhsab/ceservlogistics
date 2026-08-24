@@ -267,6 +267,7 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 // ComputeChargeableWeight derives billable weight from the packages.
 //
 //	volumetric(g) = L(cm) x W(cm) x H(cm) / divisor x 1000
+//	50 cm x 40 cm x 25 cm / 5000 = 10 kg = 10000 g
 //
 // with the division rounded HALF_UP, summed across packages. Chargeable weight
 // is the greater of actual and volumetric, raised to the lane's minimum, then

@@ -170,6 +170,7 @@ func (h *Handler) Authenticate(next http.Handler) http.Handler {
 			OrganizationCode:      auth.Principal.OrganizationCode,
 			OrganizationCurrency:  auth.Principal.OrganizationCurrency,
 			OrganizationTimezone:  auth.Principal.OrganizationTimezone,
+			OrganizationCountry:   auth.Principal.OrganizationCountry,
 			OrganizationAWBPrefix: auth.Principal.OrganizationAWBPrefix,
 			HasUnscopedRole:       true,
 			IsPartner:             true,

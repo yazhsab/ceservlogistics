@@ -20,6 +20,7 @@ RETURNING *;
 -- time so the difference is not observable by timing.
 SELECT k.*, o.public_id AS organization_public_id, o.code AS organization_code,
        o.currency AS organization_currency, o.timezone AS organization_timezone,
+       o.country AS organization_country,
        o.awb_prefix AS organization_awb_prefix
 FROM api_keys k
 JOIN organizations o ON o.id = k.organization_id

@@ -406,11 +406,11 @@ which is fine on the current data volume and will not be at scale.
 - **Settlement adjustments.** The correction path `Generate` had been pointing
   at since Release 3 without it existing. See §6a.
 
-**Deferred**
+**Deferred at the Release 4 cutoff**
 
-- `pod.captured` and `cod.collected` are in the published webhook catalogue but
-  nothing emits them yet — only shipment status transitions raise events. A
-  partner can subscribe and will receive nothing.
+- `pickup.completed`, `pod.captured`, and `cod.collected` had no emitters at the
+  Release 4 cutoff. Phase 2 later added transactional producers and focused
+  integration tests for all three.
 - `webhook_subscriptions.filter` is stored but not applied: every subscriber to
   an event receives every instance of it.
 - Report `format: JSON` is accepted and validated but always produces CSV.

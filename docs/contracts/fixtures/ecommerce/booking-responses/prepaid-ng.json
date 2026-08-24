@@ -1,0 +1,86 @@
+{
+  "id": "shp_01K36G4A7B9C2D4E6F8G0H3JKM",
+  "awb": "CSV260823000002",
+  "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1002:F-1",
+  "status": "BOOKED",
+  "statusChangedAt": "2026-08-23T10:21:03Z",
+  "paymentMode": "PREPAID",
+  "bookedAt": "2026-08-23T10:21:03Z",
+  "createdAt": "2026-08-23T10:21:03Z",
+  "customer": {
+    "id": "cus_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    "code": "AHIAB-NG",
+    "name": "Ahiabekee Nigeria"
+  },
+  "service": {
+    "id": "svc_01K36FZ86V4M2N7P9Q3R5S8TWB",
+    "code": "EXPRESS",
+    "name": "Express Delivery"
+  },
+  "origin": {
+    "pincode": "100001",
+    "branch": { "id": "ou_01K36G06F5H7J9K2M4N6P8Q0RS", "code": "LOS-IKEJA", "name": "Ikeja Branch" },
+    "hub": { "id": "ou_01K36G0D7T9V2W4X6Y8Z0A3B5C", "code": "LOS-HUB", "name": "Lagos Hub" },
+    "isRemote": false
+  },
+  "destination": {
+    "pincode": "900001",
+    "branch": { "id": "ou_01K36G0N8P2Q4R6S9T3V5W7XYZ", "code": "ABV-WUSE", "name": "Wuse Branch" },
+    "hub": { "id": "ou_01K36G0W9X3Y5Z7A2B4C6D8EFG", "code": "ABV-HUB", "name": "Abuja Hub" },
+    "isRemote": false
+  },
+  "route": {
+    "routeCode": "LOS-ABV-EXP",
+    "resolutionSource": "SERVICE_ROUTE",
+    "transitHours": 18,
+    "slaHours": 24,
+    "legs": [],
+    "explanationId": "exp_01K36G4J5K7M9N2P4Q6R8S0TVW"
+  },
+  "charges": {
+    "currency": "NGN",
+    "rateCardCode": "AHIAB-NG-EXP",
+    "rateCardVersion": 1,
+    "pricingEngineVersion": "1.0.0",
+    "originZoneCode": "LAGOS",
+    "destinationZoneCode": "ABUJA",
+    "freightMinor": 250000,
+    "surchargeTotalMinor": 30000,
+    "discountTotalMinor": 0,
+    "taxableMinor": 280000,
+    "taxTotalMinor": 21000,
+    "roundingMinor": 0,
+    "totalMinor": 301000,
+    "lineItems": []
+  },
+  "packages": [
+    {
+      "id": "pkg_01K36G4S6T8V0W2X4Y7Z9A3BCD",
+      "sequence": 1,
+      "pieceBarcode": "CSV260823000002-01",
+      "reference": "AHB-1002-P1",
+      "actualWeightGrams": 900,
+      "volumetricWeightGrams": 1584,
+      "lengthMm": 300,
+      "widthMm": 220,
+      "heightMm": 120,
+      "contentDescription": "Clothing",
+      "declaredValueMinor": 5000000
+    }
+  ],
+  "pieceCount": 1,
+  "actualWeightGrams": 900,
+  "volumetricWeightGrams": 1584,
+  "chargeableWeightGrams": 2000,
+  "currency": "NGN",
+  "declaredValueMinor": 5000000,
+  "codAmountMinor": 0,
+  "totalAmountMinor": 301000,
+  "insuranceRequired": false,
+  "slaHours": 24,
+  "promisedDeliveryAt": "2026-08-24T10:21:03Z",
+  "contentDescription": "Clothing",
+  "isFragile": false,
+  "isDangerousGoods": false,
+  "allowedTransitions": ["CANCELLED"]
+}

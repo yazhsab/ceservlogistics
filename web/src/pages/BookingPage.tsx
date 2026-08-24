@@ -20,9 +20,12 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useRef, useState } from "react";
 import {
+  type Control,
   useFieldArray,
   useForm,
+  useWatch,
   type FieldErrors,
+  type UseFormSetValue,
   type UseFormRegister,
 } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -57,8 +60,12 @@ import {
   Textarea,
 } from "../components/ui";
 import {
+  cmToMm,
+  formatDimensionsCm,
   formatMoney,
   formatWeight,
+  kgToGrams,
+  mmToCm,
   titleCase,
   toMinorUnits,
 } from "../lib/utils";
@@ -76,18 +83,22 @@ const addressSchema = z.object({
   line1: z.string().min(3, "Enter the street address."),
   line2: z.string().optional(),
   landmark: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
+  district: z.string().optional(),
+  city: z.string().min(1, "Enter a city or state capital."),
+  state: z.string().min(1, "Select a state."),
   pincode: z
     .string()
     .regex(/^[1-9][0-9]{5}$/, "Enter a valid 6-digit postal code."),
 });
 const packageSchema = z.object({
   reference: z.string().optional(),
-  actualWeightGrams: z.number().int().min(1, "Weight must be at least 1 gram."),
-  lengthMm: z.number().int().min(1).optional(),
-  widthMm: z.number().int().min(1).optional(),
-  heightMm: z.number().int().min(1).optional(),
+  actualWeightKg: z
+    .number()
+    .min(0.001, "Weight must be at least 0.001 kg.")
+    .multipleOf(0.001),
+  lengthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  widthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  heightCm: z.number().min(0.1).multipleOf(0.1).optional(),
   contentDescription: z.string().optional(),
 });
 const bookingSchema = z
@@ -133,6 +144,26 @@ type PackageTypePreset = {
   heightMm: number;
   maxWeightGrams?: number;
 };
+type GeographyState = { id: string; code: string; name: string };
+type GeographyDistrict = {
+  id: string;
+  code: string;
+  name: string;
+  stateCode: string;
+  stateName: string;
+};
+type PlaceSuggestion = {
+  id: string;
+  code: string;
+  label: string;
+  matchedOn: "CODE" | "AREA" | "CITY" | "OFFICE" | "DISTRICT";
+  area?: string;
+  city?: string;
+  district?: string;
+  state: string;
+  stateCode: string;
+  isRemote: boolean;
+};
 
 const sections = [
   { id: "sender", label: "Sender", icon: UserRound },
@@ -164,6 +195,7 @@ export default function BookingPage() {
     handleSubmit,
     watch,
     setValue,
+    getValues,
     reset,
     formState: { errors },
   } = useForm<BookingValues>({
@@ -188,7 +220,7 @@ export default function BookingPage() {
       serviceCode: "",
       paymentMode: "PREPAID",
       packages: [
-        { reference: "", actualWeightGrams: 500, contentDescription: "" },
+        { reference: "", actualWeightKg: 0.5, contentDescription: "" },
       ],
       declaredValue: "",
       codAmount: "",
@@ -200,6 +232,7 @@ export default function BookingPage() {
     },
   });
   const packages = useFieldArray({ control, name: "packages" });
+  const bookingValues = useWatch({ control });
   const paymentMode = watch("paymentMode");
   const customerId = watch("customerId");
   const customers = useQuery({
@@ -261,12 +294,10 @@ export default function BookingPage() {
     codAmountMinor: toMinorUnits(values.codAmount),
     insuranceRequired: values.insuranceRequired,
     packages: values.packages.map((item) => ({
-      reference: item.reference || undefined,
-      actualWeightGrams: item.actualWeightGrams,
-      lengthMm: item.lengthMm,
-      widthMm: item.widthMm,
-      heightMm: item.heightMm,
-      contentDescription: item.contentDescription || values.contentDescription,
+      actualWeightGrams: kgToGrams(item.actualWeightKg) ?? 0,
+      lengthMm: cmToMm(item.lengthCm),
+      widthMm: cmToMm(item.widthCm),
+      heightMm: cmToMm(item.heightCm),
     })),
   });
   const createBookingRequest = (values: BookingValues): BookingRequest => ({
@@ -276,7 +307,14 @@ export default function BookingPage() {
     paymentMode: values.paymentMode,
     sender: cleanAddress(values.sender),
     recipient: cleanAddress(values.recipient),
-    packages: createQuoteRequest(values).packages,
+    packages: values.packages.map((item) => ({
+      reference: item.reference || undefined,
+      actualWeightGrams: kgToGrams(item.actualWeightKg) ?? 0,
+      lengthMm: cmToMm(item.lengthCm),
+      widthMm: cmToMm(item.widthCm),
+      heightMm: cmToMm(item.heightCm),
+      contentDescription: item.contentDescription || values.contentDescription,
+    })),
     declaredValueMinor: toMinorUnits(values.declaredValue),
     codAmountMinor: toMinorUnits(values.codAmount),
     insuranceRequired: values.insuranceRequired,
@@ -396,10 +434,27 @@ export default function BookingPage() {
     setValue("sender.state", address.state ?? "", { shouldDirty: true });
     setValue("sender.pincode", address.pincode ?? "", { shouldDirty: true });
   };
+  const resizePackages = (requestedCount: number) => {
+    const count = Math.min(50, Math.max(1, Math.trunc(requestedCount || 1)));
+    const current = getValues("packages");
+    if (count === current.length) return;
+    if (count < current.length) {
+      packages.replace(current.slice(0, count));
+      return;
+    }
+    packages.replace([
+      ...current,
+      ...Array.from({ length: count - current.length }, () => ({
+        reference: "",
+        actualWeightKg: 0.5,
+        contentDescription: "",
+      })),
+    ]);
+  };
   const startNew = () => {
     reset();
     packages.replace([
-      { reference: "", actualWeightGrams: 500, contentDescription: "" },
+      { reference: "", actualWeightKg: 0.5, contentDescription: "" },
     ]);
     setPreview(undefined);
     setPreviewStale(false);
@@ -419,7 +474,7 @@ export default function BookingPage() {
         actions={
           <div className="hidden text-right text-xs text-slate-500 sm:block">
             <kbd className="rounded border bg-white px-1.5 py-0.5">⌘ Enter</kbd>
-            <span className="ml-2">Preview / book</span>
+            <span className="ml-2">Preview, then book</span>
           </div>
         }
       />
@@ -557,7 +612,9 @@ export default function BookingPage() {
                 ) : null}
                 <AddressFields
                   prefix="sender"
+                  control={control}
                   register={register}
+                  setValue={setValue}
                   errors={errors.sender}
                 />
               </div>
@@ -570,7 +627,9 @@ export default function BookingPage() {
               <div className="grid gap-4 p-4 sm:grid-cols-2">
                 <AddressFields
                   prefix="recipient"
+                  control={control}
                   register={register}
+                  setValue={setValue}
                   errors={errors.recipient}
                 />
               </div>
@@ -616,10 +675,11 @@ export default function BookingPage() {
                   />
                 </Field>
                 <Field
-                  label="Contents"
+                  label="General description of item"
                   htmlFor="contentDescription"
                   required
                   error={errors.contentDescription?.message}
+                  hint="This description is shown on the shipment and package records."
                 >
                   <Input
                     id="contentDescription"
@@ -632,24 +692,46 @@ export default function BookingPage() {
             <Panel id="packages" className="scroll-mt-32">
               <PanelHeader
                 title="4. Packages"
-                description="Enter measured package values. Chargeable weight is always returned by the server."
+                description="Measure each piece in centimetres. Dimensional weight (kg) = length × width × height ÷ 5,000; chargeable weight is returned by the server."
                 actions={
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      packages.append({
-                        reference: "",
-                        actualWeightGrams: 500,
-                        contentDescription: "",
-                      })
-                    }
-                    disabled={packages.fields.length >= 50}
-                  >
-                    <Plus aria-hidden className="h-4 w-4" /> Add piece
-                  </Button>
+                  <Badge tone="info">
+                    {packages.fields.length}{" "}
+                    {packages.fields.length === 1 ? "package" : "packages"}
+                  </Badge>
                 }
               />
+              <div className="grid items-end gap-3 border-b bg-slate-50 p-4 sm:grid-cols-[180px_minmax(0,1fr)_auto]">
+                <Field label="Number of packages" htmlFor="packageCount">
+                  <Input
+                    id="packageCount"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={packages.fields.length}
+                    onChange={(event) =>
+                      resizePackages(Number(event.target.value))
+                    }
+                  />
+                </Field>
+                <p className="pb-2 text-xs leading-5 text-slate-500">
+                  Use one package entry for every physical box. Each package
+                  receives its own piece barcode under the same shipment AWB.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    packages.append({
+                      reference: "",
+                      actualWeightKg: 0.5,
+                      contentDescription: "",
+                    })
+                  }
+                  disabled={packages.fields.length >= 50}
+                >
+                  <Plus aria-hidden className="h-4 w-4" /> Add package
+                </Button>
+              </div>
               <div className="divide-y">
                 {packages.fields.map((field, index) => (
                   <div key={field.id} className="p-4">
@@ -681,18 +763,18 @@ export default function BookingPage() {
                             );
                             if (!preset) return;
                             setValue(
-                              `packages.${index}.lengthMm`,
-                              preset.lengthMm || undefined,
+                              `packages.${index}.lengthCm`,
+                              mmToCm(preset.lengthMm) || undefined,
                               { shouldDirty: true },
                             );
                             setValue(
-                              `packages.${index}.widthMm`,
-                              preset.widthMm || undefined,
+                              `packages.${index}.widthCm`,
+                              mmToCm(preset.widthMm) || undefined,
                               { shouldDirty: true },
                             );
                             setValue(
-                              `packages.${index}.heightMm`,
-                              preset.heightMm || undefined,
+                              `packages.${index}.heightCm`,
+                              mmToCm(preset.heightMm) || undefined,
                               { shouldDirty: true },
                             );
                           }}
@@ -716,57 +798,64 @@ export default function BookingPage() {
                         />
                       </Field>
                       <Field
-                        label="Weight (g)"
+                        label="Shipment weight (kg)"
                         htmlFor={`package-${index}-weight`}
                         required
                         error={
-                          errors.packages?.[index]?.actualWeightGrams?.message
+                          errors.packages?.[index]?.actualWeightKg?.message
                         }
                         className="sm:col-span-2"
                       >
                         <Input
                           id={`package-${index}-weight`}
                           type="number"
-                          min={1}
-                          {...register(`packages.${index}.actualWeightGrams`, {
+                          min={0.001}
+                          step={0.001}
+                          {...register(`packages.${index}.actualWeightKg`, {
                             valueAsNumber: true,
                           })}
                         />
                       </Field>
                       <Field
-                        label="Length (mm)"
+                        label="Length (cm)"
                         htmlFor={`package-${index}-length`}
                       >
                         <Input
                           id={`package-${index}-length`}
                           type="number"
-                          {...register(`packages.${index}.lengthMm`, {
+                          min={0.1}
+                          step={0.1}
+                          {...register(`packages.${index}.lengthCm`, {
                             setValueAs: (value) =>
                               value === "" ? undefined : Number(value),
                           })}
                         />
                       </Field>
                       <Field
-                        label="Width (mm)"
+                        label="Width (cm)"
                         htmlFor={`package-${index}-width`}
                       >
                         <Input
                           id={`package-${index}-width`}
                           type="number"
-                          {...register(`packages.${index}.widthMm`, {
+                          min={0.1}
+                          step={0.1}
+                          {...register(`packages.${index}.widthCm`, {
                             setValueAs: (value) =>
                               value === "" ? undefined : Number(value),
                           })}
                         />
                       </Field>
                       <Field
-                        label="Height (mm)"
+                        label="Height (cm)"
                         htmlFor={`package-${index}-height`}
                       >
                         <Input
                           id={`package-${index}-height`}
                           type="number"
-                          {...register(`packages.${index}.heightMm`, {
+                          min={0.1}
+                          step={0.1}
+                          {...register(`packages.${index}.heightCm`, {
                             setValueAs: (value) =>
                               value === "" ? undefined : Number(value),
                           })}
@@ -850,11 +939,21 @@ export default function BookingPage() {
               </div>
             </Panel>
             <div id="review" className="scroll-mt-32 xl:hidden">
-              <ReviewSummary preview={preview} stale={previewStale} />
+              <ReviewSummary
+                preview={preview}
+                stale={previewStale}
+                values={bookingValues as BookingValues}
+                error={previewMutation.error}
+              />
             </div>
           </div>
           <aside className="sticky top-24 hidden space-y-4 xl:block">
-            <ReviewSummary preview={preview} stale={previewStale} />
+            <ReviewSummary
+              preview={preview}
+              stale={previewStale}
+              values={bookingValues as BookingValues}
+              error={previewMutation.error}
+            />
             <Button
               type="button"
               size="lg"
@@ -865,7 +964,7 @@ export default function BookingPage() {
               }
             >
               <Route aria-hidden className="h-4 w-4" />{" "}
-              {preview ? "Refresh route & price" : "Check route & price"}
+              {preview ? "Refresh shipment preview" : "Preview shipment"}
             </Button>
             <Button
               type="submit"
@@ -875,7 +974,8 @@ export default function BookingPage() {
               disabled={!preview?.quote || previewStale}
               loading={bookingMutation.isPending}
             >
-              <PackagePlus aria-hidden className="h-4 w-4" /> Book shipment
+              <PackagePlus aria-hidden className="h-4 w-4" /> Confirm & book
+              shipment
             </Button>
             {bookingMutation.error ? (
               <InlineNotice tone="danger" title="Booking not completed">
@@ -901,7 +1001,7 @@ export default function BookingPage() {
                 void handleSubmit((values) => previewMutation.mutate(values))()
               }
             >
-              Check route & price
+              {preview ? "Refresh preview" : "Preview shipment"}
             </Button>
             <Button
               type="submit"
@@ -910,7 +1010,7 @@ export default function BookingPage() {
               disabled={!preview?.quote || previewStale}
               loading={bookingMutation.isPending}
             >
-              Book shipment
+              Confirm & book
             </Button>
           </div>
           {bookingMutation.error ? (
@@ -926,13 +1026,69 @@ export default function BookingPage() {
 
 function AddressFields({
   prefix,
+  control,
   register,
+  setValue,
   errors,
 }: {
   prefix: "sender" | "recipient";
+  control: Control<BookingValues>;
   register: UseFormRegister<BookingValues>;
+  setValue: UseFormSetValue<BookingValues>;
   errors?: FieldErrors<BookingValues["sender"]>;
 }) {
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeMenuOpen, setPlaceMenuOpen] = useState(false);
+  const deferredPlaceQuery = useDeferredValue(placeQuery);
+  const selectedState = useWatch({ control, name: `${prefix}.state` });
+  const states = useQuery({
+    queryKey: ["geography-states", "NG"],
+    queryFn: () =>
+      apiRequest<{ data: GeographyState[] }>(
+        "/api/v1/geography/states?country=NG",
+      ),
+    staleTime: 24 * 60 * 60_000,
+  });
+  const stateCode = states.data?.data.find(
+    (state) => state.name === selectedState,
+  )?.code;
+  const districts = useQuery({
+    queryKey: ["geography-districts", "NG", stateCode],
+    queryFn: () =>
+      apiRequest<{ data: GeographyDistrict[]; label: string }>(
+        `/api/v1/geography/districts${queryString({ country: "NG", state: stateCode })}`,
+      ),
+    enabled: Boolean(stateCode),
+    staleTime: 24 * 60 * 60_000,
+  });
+  const places = useQuery({
+    queryKey: ["geography-places", "NG", deferredPlaceQuery],
+    queryFn: () =>
+      apiRequest<{ data: PlaceSuggestion[]; districtLabel: string }>(
+        `/api/v1/geography/places${queryString({ q: deferredPlaceQuery.trim(), country: "NG", limit: 10 })}`,
+      ),
+    enabled: deferredPlaceQuery.trim().length >= 2,
+    staleTime: 5 * 60_000,
+  });
+  const selectPlace = (place: PlaceSuggestion) => {
+    setValue(`${prefix}.pincode`, place.code, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`${prefix}.state`, place.state, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setValue(`${prefix}.district`, place.district ?? "", {
+      shouldDirty: true,
+    });
+    setValue(`${prefix}.city`, place.city ?? place.district ?? "", {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    setPlaceQuery(place.label);
+    setPlaceMenuOpen(false);
+  };
   return (
     <>
       <Field
@@ -991,6 +1147,66 @@ function AddressFields({
         <Input id={`${prefix}-landmark`} {...register(`${prefix}.landmark`)} />
       </Field>
       <Field
+        label="Find area, capital or LGA"
+        htmlFor={`${prefix}-placeLookup`}
+        hint="Select a result to fill the postal code, city/LGA and state."
+        className="relative sm:col-span-2"
+      >
+        <div className="relative">
+          <Search
+            aria-hidden
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+          />
+          <Input
+            id={`${prefix}-placeLookup`}
+            value={placeQuery}
+            onFocus={() => setPlaceMenuOpen(true)}
+            onChange={(event) => {
+              setPlaceQuery(event.target.value);
+              setPlaceMenuOpen(true);
+            }}
+            className="pl-9"
+            placeholder="e.g. Calabar, Ikeja GRA, Wuse or an LGA"
+            autoComplete="off"
+          />
+        </div>
+        {placeMenuOpen && deferredPlaceQuery.trim().length >= 2 ? (
+          <div className="absolute left-0 right-0 top-[86px] z-20 max-h-64 overflow-y-auto rounded-md border bg-white p-1 shadow-overlay">
+            {places.isLoading ? (
+              <p className="p-3 text-sm text-slate-500">Searching places…</p>
+            ) : places.error ? (
+              <p className="p-3 text-sm text-danger">
+                Place search is unavailable. Enter the address manually.
+              </p>
+            ) : places.data?.data.length ? (
+              places.data.data.map((place) => (
+                <button
+                  key={place.id}
+                  type="button"
+                  onClick={() => selectPlace(place)}
+                  className="flex w-full items-start justify-between gap-3 rounded px-3 py-2 text-left hover:bg-muted"
+                >
+                  <span>
+                    <strong className="block text-sm">{place.label}</strong>
+                    <span className="text-xs text-slate-500">
+                      {place.district ? `LGA: ${place.district} · ` : ""}
+                      Postal code {place.code}
+                    </span>
+                  </span>
+                  <Badge tone={place.isRemote ? "warning" : "info"}>
+                    {place.isRemote ? "Remote" : titleCase(place.matchedOn)}
+                  </Badge>
+                </button>
+              ))
+            ) : (
+              <p className="p-3 text-sm text-slate-500">
+                No matching area, capital or LGA found.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </Field>
+      <Field
         label="Postal code"
         htmlFor={`${prefix}-pincode`}
         required
@@ -1003,11 +1219,47 @@ function AddressFields({
           {...register(`${prefix}.pincode`)}
         />
       </Field>
-      <Field label="City" htmlFor={`${prefix}-city`}>
-        <Input id={`${prefix}-city`} {...register(`${prefix}.city`)} />
+      <Field
+        label="State"
+        htmlFor={`${prefix}-state`}
+        required
+        error={errors?.state?.message}
+      >
+        <Select id={`${prefix}-state`} {...register(`${prefix}.state`)}>
+          <option value="">Select state</option>
+          {states.data?.data.map((state) => (
+            <option key={state.id} value={state.name}>
+              {state.name}
+            </option>
+          ))}
+        </Select>
       </Field>
-      <Field label="State" htmlFor={`${prefix}-state`}>
-        <Input id={`${prefix}-state`} {...register(`${prefix}.state`)} />
+      <Field
+        label={districts.data?.label ?? "Local government area (LGA)"}
+        htmlFor={`${prefix}-district`}
+      >
+        <Select
+          id={`${prefix}-district`}
+          disabled={!stateCode || districts.isLoading}
+          {...register(`${prefix}.district`)}
+        >
+          <option value="">
+            {stateCode ? "Select LGA" : "Select a state first"}
+          </option>
+          {districts.data?.data.map((district) => (
+            <option key={district.id} value={district.name}>
+              {district.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field
+        label="City / state capital"
+        htmlFor={`${prefix}-city`}
+        required
+        error={errors?.city?.message}
+      >
+        <Input id={`${prefix}-city`} {...register(`${prefix}.city`)} />
       </Field>
     </>
   );
@@ -1016,17 +1268,27 @@ function AddressFields({
 function ReviewSummary({
   preview,
   stale,
+  values,
+  error,
 }: {
   preview?: Preview;
   stale: boolean;
+  values: BookingValues;
+  error?: Error | null;
 }) {
   return (
     <Panel>
       <PanelHeader
-        title="6. Review"
-        description="Server-resolved route and price"
+        title="6. Shipment preview"
+        description="Verify the shipment details, route and price before booking."
       />
-      {!preview ? (
+      {error ? (
+        <div className="p-4">
+          <InlineNotice tone="danger" title="Preview could not be generated">
+            {error.message}
+          </InlineNotice>
+        </div>
+      ) : !preview ? (
         <EmptyState
           icon={Route}
           title="Route and price not checked"
@@ -1079,6 +1341,78 @@ function ReviewSummary({
               label="Chargeable"
               value={formatWeight(preview.quote?.weight?.chargeableWeightGrams)}
             />
+          </div>
+          <div className="mt-4 space-y-3 rounded-md border bg-white p-3 text-xs">
+            <div>
+              <p className="font-semibold text-slate-900">
+                General description of item
+              </p>
+              <p className="mt-1 text-slate-600">
+                {values.contentDescription || "—"}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div>
+                <p className="font-semibold text-slate-900">Sender</p>
+                <p className="mt-1 text-slate-600">
+                  {values.sender.contactName || "—"}
+                </p>
+                <p className="text-slate-500">
+                  {[
+                    values.sender.city,
+                    values.sender.district,
+                    values.sender.state,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">Recipient</p>
+                <p className="mt-1 text-slate-600">
+                  {values.recipient.contactName || "—"}
+                </p>
+                <p className="text-slate-500">
+                  {[
+                    values.recipient.city,
+                    values.recipient.district,
+                    values.recipient.state,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "—"}
+                </p>
+              </div>
+            </div>
+            <div className="border-t pt-3">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-slate-900">
+                  Number of packages
+                </p>
+                <Badge tone="info">{values.packages.length}</Badge>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {values.packages.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between gap-3 rounded bg-slate-50 px-2.5 py-2"
+                  >
+                    <span>Package {index + 1}</span>
+                    <span className="text-right font-medium">
+                      {formatWeight(kgToGrams(item.actualWeightKg))} ·{" "}
+                      {formatDimensionsCm(
+                        cmToMm(item.lengthCm),
+                        cmToMm(item.widthCm),
+                        cmToMm(item.heightCm),
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t pt-3">
+              <span className="font-semibold text-slate-900">Payment mode</span>
+              <span>{titleCase(values.paymentMode)}</span>
+            </div>
           </div>
           {preview.quote ? (
             <div className="mt-4 divide-y rounded-md border">
@@ -1205,9 +1539,11 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
 
 function cleanAddress(address: BookingValues["sender"]) {
   return {
-    countryCode: "IN",
+    countryCode: "NG",
     ...Object.fromEntries(
-      Object.entries(address).filter(([, value]) => value !== ""),
+      Object.entries(address).filter(
+        ([key, value]) => key !== "district" && value !== "",
+      ),
     ),
   };
 }

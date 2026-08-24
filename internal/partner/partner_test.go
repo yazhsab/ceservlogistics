@@ -1,7 +1,11 @@
 package partner
 
 import (
+	"context"
+	"io"
 	"net"
+	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +203,154 @@ func TestRandomTokenIsUniqueAndURLSafe(t *testing.T) {
 		// Must survive being put in a header and a URL without escaping.
 		if strings.ContainsAny(tok, "+/= .") {
 			t.Fatalf("token %q is not URL-safe", tok)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Outbound webhook URL policy
+// ---------------------------------------------------------------------------
+
+type staticWebhookResolver struct {
+	answers [][]netip.Addr
+	calls   int
+}
+
+func (r *staticWebhookResolver) LookupNetIP(
+	_ context.Context, _, _ string,
+) ([]netip.Addr, error) {
+	if len(r.answers) == 0 {
+		return nil, nil
+	}
+	idx := r.calls
+	if idx >= len(r.answers) {
+		idx = len(r.answers) - 1
+	}
+	r.calls++
+	return r.answers[idx], nil
+}
+
+func TestWebhookURLPolicyAcceptsOnlyPublicHTTPSDestinations(t *testing.T) {
+	public := netip.MustParseAddr("93.184.216.34")
+	policy := &webhookURLPolicy{resolver: &staticWebhookResolver{
+		answers: [][]netip.Addr{{public}},
+	}}
+
+	for _, tc := range []struct {
+		name string
+		url  string
+		ok   bool
+	}{
+		{"public literal", "https://93.184.216.34/hooks/orders", true},
+		{"public DNS", "https://hooks.example.com/orders", true},
+		{"plaintext", "http://93.184.216.34/hooks", false},
+		{"userinfo", "https://merchant:secret@93.184.216.34/hooks", false},
+		{"alternate port", "https://93.184.216.34:8443/hooks", false},
+		{"loopback", "https://127.0.0.1/hooks", false},
+		{"private", "https://10.1.2.3/hooks", false},
+		{"unspecified", "https://0.0.0.0/hooks", false},
+		{"multicast", "https://224.0.0.1/hooks", false},
+		{"link local metadata", "https://169.254.169.254/latest/meta-data", false},
+		{"carrier-grade metadata", "https://100.100.100.200/latest/meta-data", false},
+		{"IPv6 loopback", "https://[::1]/hooks", false},
+		{"IPv6 unspecified", "https://[::]/hooks", false},
+		{"IPv6 multicast", "https://[ff02::1]/hooks", false},
+		{"IPv6 ULA", "https://[fd00::1234]/hooks", false},
+		{"metadata name", "https://metadata.google.internal/computeMetadata/v1", false},
+		{"userinfo ambiguity", "https://93.184.216.34@127.0.0.1/hooks", false},
+		{"fragment", "https://93.184.216.34/hooks#internal", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := policy.validate(context.Background(), tc.url)
+			if tc.ok && err != nil {
+				t.Fatalf("safe URL rejected: %v", err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatal("unsafe URL accepted")
+			}
+		})
+	}
+}
+
+func TestWebhookURLPolicyRejectsAnyPrivateDNSAnswer(t *testing.T) {
+	policy := &webhookURLPolicy{resolver: &staticWebhookResolver{
+		answers: [][]netip.Addr{{
+			netip.MustParseAddr("93.184.216.34"),
+			netip.MustParseAddr("192.168.1.20"),
+		}},
+	}}
+	if _, err := policy.validate(context.Background(), "https://hooks.example.com/orders"); err == nil {
+		t.Fatal("a mixed public/private DNS answer was accepted")
+	}
+}
+
+func TestWebhookDialerBlocksDNSRebindingBeforeConnect(t *testing.T) {
+	resolver := &staticWebhookResolver{answers: [][]netip.Addr{
+		{netip.MustParseAddr("93.184.216.34")},
+		{netip.MustParseAddr("127.0.0.1")},
+	}}
+	policy := &webhookURLPolicy{resolver: resolver}
+	if _, err := policy.validate(context.Background(), "https://hooks.example.com/orders"); err != nil {
+		t.Fatalf("registration lookup should be public: %v", err)
+	}
+
+	dialCalls := 0
+	dialer := &webhookDialer{
+		policy: policy,
+		dial: func(context.Context, string, string) (net.Conn, error) {
+			dialCalls++
+			return nil, io.EOF
+		},
+	}
+	if _, err := dialer.DialContext(context.Background(), "tcp", "hooks.example.com:443"); err == nil {
+		t.Fatal("a hostname that rebound to loopback reached the network dialer")
+	}
+	if dialCalls != 0 {
+		t.Fatalf("network dialer called %d times for a rejected rebound address", dialCalls)
+	}
+}
+
+type webhookRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f webhookRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestWebhookClientDoesNotFollowRedirects(t *testing.T) {
+	calls := 0
+	client := &http.Client{
+		Transport: webhookRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     http.Header{"Location": []string{"https://127.0.0.1/internal"}},
+				Body:       io.NopCloser(strings.NewReader("redirect")),
+				Request:    req,
+			}, nil
+		}),
+		CheckRedirect: rejectWebhookRedirect,
+	}
+	req, _ := http.NewRequest(http.MethodPost, "https://93.184.216.34/hooks", nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("redirect should be returned as a response: %v", err)
+	}
+	resp.Body.Close()
+	if calls != 1 || resp.StatusCode != http.StatusFound {
+		t.Fatalf("redirect was followed: calls=%d status=%d", calls, resp.StatusCode)
+	}
+}
+
+func TestEveryPublishedWebhookEventHasAProducer(t *testing.T) {
+	produced := map[string]bool{
+		EventPickupCompleted: true,
+		EventPODCaptured:     true,
+		EventCODCollected:    true,
+	}
+	for _, eventType := range statusEvents {
+		produced[eventType] = true
+	}
+	for _, eventType := range AllEvents {
+		if !produced[eventType] {
+			t.Errorf("published event %q has no registered producer", eventType)
 		}
 	}
 }

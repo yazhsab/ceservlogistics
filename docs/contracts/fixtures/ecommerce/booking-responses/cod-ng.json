@@ -1,0 +1,100 @@
+{
+  "id": "shp_01K36G3F5P9YJ7M2E8Q4T6V0WX",
+  "awb": "CSV260823000001",
+  "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1001:F-1",
+  "status": "BOOKED",
+  "statusChangedAt": "2026-08-23T09:31:04Z",
+  "paymentMode": "COD",
+  "bookedAt": "2026-08-23T09:31:04Z",
+  "createdAt": "2026-08-23T09:31:04Z",
+  "customer": {
+    "id": "cus_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    "code": "AHIAB-NG",
+    "name": "Ahiabekee Nigeria"
+  },
+  "service": {
+    "id": "svc_01K36FZ86V4M2N7P9Q3R5S8TWB",
+    "code": "EXPRESS",
+    "name": "Express Delivery"
+  },
+  "origin": {
+    "pincode": "100001",
+    "branch": { "id": "ou_01K36G06F5H7J9K2M4N6P8Q0RS", "code": "LOS-IKEJA", "name": "Ikeja Branch" },
+    "hub": { "id": "ou_01K36G0D7T9V2W4X6Y8Z0A3B5C", "code": "LOS-HUB", "name": "Lagos Hub" },
+    "isRemote": false
+  },
+  "destination": {
+    "pincode": "900001",
+    "branch": { "id": "ou_01K36G0N8P2Q4R6S9T3V5W7XYZ", "code": "ABV-WUSE", "name": "Wuse Branch" },
+    "hub": { "id": "ou_01K36G0W9X3Y5Z7A2B4C6D8EFG", "code": "ABV-HUB", "name": "Abuja Hub" },
+    "isRemote": false
+  },
+  "route": {
+    "routeCode": "LOS-ABV-EXP",
+    "resolutionSource": "SERVICE_ROUTE",
+    "transitHours": 18,
+    "slaHours": 24,
+    "legs": [],
+    "explanationId": "exp_01K36G15A7B9C2D4E6F8G0H3JK"
+  },
+  "charges": {
+    "currency": "NGN",
+    "rateCardCode": "AHIAB-NG-EXP",
+    "rateCardVersion": 1,
+    "pricingEngineVersion": "1.0.0",
+    "originZoneCode": "LAGOS",
+    "destinationZoneCode": "ABUJA",
+    "freightMinor": 350000,
+    "surchargeTotalMinor": 90000,
+    "discountTotalMinor": 0,
+    "taxableMinor": 440000,
+    "taxTotalMinor": 33000,
+    "roundingMinor": 0,
+    "totalMinor": 473000,
+    "lineItems": []
+  },
+  "packages": [
+    {
+      "id": "pkg_01K36G1F2H4J6K8M0N3P5Q7RST",
+      "sequence": 1,
+      "pieceBarcode": "CSV260823000001-01",
+      "reference": "AHB-1001-P1",
+      "actualWeightGrams": 1800,
+      "volumetricWeightGrams": 6000,
+      "lengthMm": 400,
+      "widthMm": 300,
+      "heightMm": 250,
+      "contentDescription": "Home appliances",
+      "declaredValueMinor": 11500000
+    },
+    {
+      "id": "pkg_01K36G1Q3R5S7T9V2W4X6Y8ZAB",
+      "sequence": 2,
+      "pieceBarcode": "CSV260823000001-02",
+      "reference": "AHB-1001-P2",
+      "actualWeightGrams": 700,
+      "volumetricWeightGrams": 2250,
+      "lengthMm": 300,
+      "widthMm": 250,
+      "heightMm": 150,
+      "contentDescription": "Books and accessories",
+      "declaredValueMinor": 3500000
+    }
+  ],
+  "pieceCount": 2,
+  "actualWeightGrams": 2500,
+  "volumetricWeightGrams": 8250,
+  "chargeableWeightGrams": 8500,
+  "currency": "NGN",
+  "declaredValueMinor": 15000000,
+  "codAmountMinor": 16625000,
+  "totalAmountMinor": 473000,
+  "insuranceRequired": true,
+  "slaHours": 24,
+  "promisedDeliveryAt": "2026-08-24T09:31:04Z",
+  "contentDescription": "Home appliances, books and accessories",
+  "specialInstructions": "Call the recipient before arrival.",
+  "isFragile": true,
+  "isDangerousGoods": false,
+  "allowedTransitions": ["CANCELLED"]
+}

@@ -170,7 +170,6 @@ func (s *Service) Assign(ctx context.Context, p *tenant.Principal, in AssignInpu
 		})); aErr != nil {
 			return apierr.Internal(aErr)
 		}
-
 		var dErr error
 		detail, dErr = s.loadDetail(ctx, q, p, req.PublicID)
 		return dErr
@@ -479,6 +478,13 @@ func (s *Service) Complete(ctx context.Context, p *tenant.Principal, in Complete
 			},
 		})); aErr != nil {
 			return apierr.Internal(aErr)
+		}
+		if toStatus == "COMPLETED" || toStatus == "PARTIALLY_COMPLETED" {
+			if oErr := s.runCompletionObservers(ctx, tx, p, CompletionEvent{
+				Request: req, Attempt: attempt, Status: toStatus, Shipments: collected,
+			}); oErr != nil {
+				return oErr
+			}
 		}
 
 		var dErr error

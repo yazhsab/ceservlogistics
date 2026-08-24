@@ -23,7 +23,13 @@ import {
   TableCell,
   TableHead,
 } from "../components/ui";
-import { formatMoney, formatWeight, toMinorUnits } from "../lib/utils";
+import {
+  cmToMm,
+  formatDimensionsCm,
+  formatMoney,
+  formatWeight,
+  toMinorUnits,
+} from "../lib/utils";
 
 type State = { id: string; code: string; name: string };
 type Zone = { id: string; code: string; name: string };
@@ -68,9 +74,9 @@ const stateSchema = z.object({
 const packageSchema = z.object({
   code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
   name: z.string().min(2),
-  lengthMm: z.number().int().nonnegative(),
-  widthMm: z.number().int().nonnegative(),
-  heightMm: z.number().int().nonnegative(),
+  lengthCm: z.number().nonnegative().multipleOf(0.1),
+  widthCm: z.number().nonnegative().multipleOf(0.1),
+  heightCm: z.number().nonnegative().multipleOf(0.1),
   volumetricDivisor: z.number().int().positive(),
   maxWeightGrams: z.union([z.literal(""), z.number().int().positive()]),
 });
@@ -122,9 +128,9 @@ export default function PricingMastersPage() {
     defaultValues: {
       code: "",
       name: "",
-      lengthMm: 0,
-      widthMm: 0,
-      heightMm: 0,
+      lengthCm: 0,
+      widthCm: 0,
+      heightCm: 0,
       volumetricDivisor: 5000,
       maxWeightGrams: "",
     },
@@ -147,16 +153,21 @@ export default function PricingMastersPage() {
     },
   });
   const savePackage = useMutation({
-    mutationFn: (v: z.infer<typeof packageSchema>) =>
-      apiRequest("/api/v1/pricing/package-types", {
+    mutationFn: (v: z.infer<typeof packageSchema>) => {
+      const { lengthCm, widthCm, heightCm, ...values } = v;
+      return apiRequest("/api/v1/pricing/package-types", {
         method: "POST",
         body: {
-          ...v,
+          ...values,
           code: v.code.toUpperCase(),
+          lengthMm: cmToMm(lengthCm),
+          widthMm: cmToMm(widthCm),
+          heightMm: cmToMm(heightCm),
           maxWeightGrams:
             v.maxWeightGrams === "" ? undefined : v.maxWeightGrams,
         },
-      }),
+      });
+    },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["package-types"] });
       setPackageOpen(false);
@@ -270,7 +281,7 @@ export default function PricingMastersPage() {
                   <TableCell className="font-mono">{p.code}</TableCell>
                   <TableCell>{p.name}</TableCell>
                   <TableCell>
-                    {p.lengthMm} × {p.widthMm} × {p.heightMm} mm
+                    {formatDimensionsCm(p.lengthMm, p.widthMm, p.heightMm)}
                   </TableCell>
                   <TableCell>{p.volumetricDivisor}</TableCell>
                   <TableCell>{formatWeight(p.volumetricWeightGrams)}</TableCell>
@@ -394,7 +405,7 @@ export default function PricingMastersPage() {
         open={packageOpen}
         onOpenChange={setPackageOpen}
         title="Add package type"
-        description="Dimensions are millimetres. The calculated volumetric weight becomes a booking preset."
+        description="Dimensions are centimetres. Dimensional weight (kg) = length × width × height ÷ 5,000."
         footer={
           <>
             <Button onClick={() => setPackageOpen(false)}>Cancel</Button>
@@ -424,25 +435,31 @@ export default function PricingMastersPage() {
           <Field label="Name" htmlFor="packageName" required>
             <Input id="packageName" {...pf.register("name")} />
           </Field>
-          <Field label="Length (mm)" htmlFor="packageLength">
+          <Field label="Length (cm)" htmlFor="packageLength">
             <Input
               id="packageLength"
               type="number"
-              {...pf.register("lengthMm", { valueAsNumber: true })}
+              min={0}
+              step={0.1}
+              {...pf.register("lengthCm", { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Width (mm)" htmlFor="packageWidth">
+          <Field label="Width (cm)" htmlFor="packageWidth">
             <Input
               id="packageWidth"
               type="number"
-              {...pf.register("widthMm", { valueAsNumber: true })}
+              min={0}
+              step={0.1}
+              {...pf.register("widthCm", { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Height (mm)" htmlFor="packageHeight">
+          <Field label="Height (cm)" htmlFor="packageHeight">
             <Input
               id="packageHeight"
               type="number"
-              {...pf.register("heightMm", { valueAsNumber: true })}
+              min={0}
+              step={0.1}
+              {...pf.register("heightCm", { valueAsNumber: true })}
             />
           </Field>
           <Field label="Volumetric divisor" htmlFor="packageDivisor">

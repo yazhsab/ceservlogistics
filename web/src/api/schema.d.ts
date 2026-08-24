@@ -7228,8 +7228,11 @@ export interface paths {
      * @description Requires the `webhook:manage` scope, so an integration can configure
      *     itself without a person logging in.
      *
-     *     The URL must be HTTPS — payloads carry customer data — and the signing
-     *     secret is returned **once**.
+     *     The URL must be a public HTTPS destination on port 443 — payloads carry
+     *     customer data — and the signing secret is returned **once**. Userinfo,
+     *     local/private/special-use IPs, cloud metadata targets, and redirects are
+     *     rejected. DNS is checked at registration and again immediately before
+     *     every connection.
      */
     post: operations["partnerCreateEndpoint"];
     delete?: never;
@@ -7395,7 +7398,10 @@ export interface paths {
     put?: never;
     /**
      * Register a webhook endpoint
-     * @description Requires `webhook.manage`. The URL must be HTTPS. The signing secret is
+     * @description Requires `webhook.manage`. The URL must be a public HTTPS destination
+     *     on port 443. Userinfo, local/private/special-use IPs, cloud metadata
+     *     targets, and redirects are rejected. DNS is checked at registration and
+     *     again immediately before every connection. The signing secret is
      *     returned once and is not recoverable.
      */
     post: operations["createWebhookEndpoint"];
@@ -8651,8 +8657,13 @@ export interface components {
      */
     BasisPoints: number;
     /**
-     * @description A six-digit Indian PIN code.
-     * @example 560001
+     * @description A six-digit postal code used as the current serviceability key. The
+     *     configured Nigerian and Indian datasets both use this wire shape;
+     *     always send `BookingAddress.countryCode` so the value is resolved in
+     *     the correct country. Lagos `100001` and Abuja `900001` are Nigerian
+     *     examples.
+     * @example 100001
+     * @example 900001
      */
     Pincode: string;
     /**
@@ -9700,33 +9711,42 @@ export interface components {
      * @example {
      *       "customerId": "cus_01KZGDG8P5STK8J27R79PSS4HE",
      *       "serviceCode": "EXPRESS",
-     *       "paymentMode": "PREPAID",
-     *       "referenceNumber": "PO-12345",
+     *       "paymentMode": "COD",
+     *       "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1001:F-1",
      *       "sender": {
-     *         "contactName": "Anita Rao",
-     *         "phone": "+919800000001",
-     *         "line1": "12 Church Street",
-     *         "city": "Bengaluru",
-     *         "state": "Karnataka",
-     *         "pincode": "560001"
+     *         "contactName": "Ada Okafor",
+     *         "companyName": "Ahiabekee Lagos Fulfilment Centre",
+     *         "phone": "+2348012345601",
+     *         "line1": "12 Warehouse Avenue",
+     *         "city": "Ikeja",
+     *         "state": "Lagos",
+     *         "pincode": "100001",
+     *         "countryCode": "NG"
      *       },
      *       "recipient": {
-     *         "contactName": "Vikram Singh",
-     *         "phone": "+919800000002",
-     *         "line1": "34 Connaught Place",
-     *         "city": "New Delhi",
-     *         "state": "Delhi",
-     *         "pincode": "110001"
+     *         "contactName": "Chinedu Eze",
+     *         "phone": "+2348012345602",
+     *         "line1": "25 Example Crescent",
+     *         "city": "Abuja",
+     *         "state": "Federal Capital Territory",
+     *         "pincode": "900001",
+     *         "countryCode": "NG"
      *       },
      *       "packages": [
      *         {
-     *           "actualWeightGrams": 500,
-     *           "lengthMm": 200,
-     *           "widthMm": 150,
-     *           "heightMm": 100
+     *           "reference": "AHB-1001-P1",
+     *           "actualWeightGrams": 1800,
+     *           "lengthMm": 400,
+     *           "widthMm": 300,
+     *           "heightMm": 250,
+     *           "contentDescription": "Home appliances",
+     *           "declaredValueMinor": 15000000
      *         }
      *       ],
-     *       "contentDescription": "Documents"
+     *       "declaredValueMinor": 15000000,
+     *       "codAmountMinor": 16625000,
+     *       "insuranceRequired": true,
+     *       "contentDescription": "Home appliances"
      *     }
      */
     BookingRequest: {
@@ -9778,8 +9798,15 @@ export interface components {
       city?: string;
       state?: string;
       pincode?: components["schemas"]["Pincode"];
-      /** @default NG */
-      countryCode: string;
+      /**
+       * @description ISO-3166 alpha-2. Ecommerce connectors always send this explicitly;
+       *     when an older direct-booking client omits it, the authenticated
+       *     organization's country is used, falling back to the configured
+       *     platform default (`NG`) only if the organization has none. The same
+       *     resolved country is used for postal-code lookup and the immutable
+       *     address snapshot.
+       */
+      countryCode?: string;
       latitude?: number;
       longitude?: number;
     };
@@ -13104,11 +13131,163 @@ export interface components {
       | "pickup.completed"
       | "pod.captured"
       | "cod.collected";
+    /**
+     * @description The minimum successful `POST /api/v1/partner/shipments` response fields
+     *     the ecommerce connector persists. The full response is `Shipment`;
+     *     this profile makes connector dependencies explicit and testable.
+     */
+    EcommerceBookingResponseV1: components["schemas"]["Shipment"] & {
+      id: string;
+      awb: string;
+      referenceNumber: string;
+      /** @enum {string} */
+      status: "BOOKED";
+      paymentMode: components["schemas"]["PaymentMode"];
+      /** Format: date-time */
+      bookedAt: string;
+      customer: {
+        id: string;
+        code: string;
+        name?: string;
+      };
+      service: {
+        id?: string;
+        code: string;
+        name?: string;
+      };
+      packages: {
+        id: string;
+        sequence: number;
+        pieceBarcode: string;
+        reference?: string;
+        actualWeightGrams: number;
+        declaredValueMinor: components["schemas"]["MinorAmount"];
+      }[];
+      pieceCount: number;
+      currency: string;
+      declaredValueMinor: components["schemas"]["MinorAmount"];
+      codAmountMinor: components["schemas"]["MinorAmount"];
+      totalAmountMinor: components["schemas"]["MinorAmount"];
+    };
+    /**
+     * @description Exact top-level bytes queued and signed by C-Serve. `Webhook-Id` equals
+     *     `id`, `Webhook-Event` equals `type`, and `createdAt` is when the
+     *     delivery payload was frozen. Consumers deduplicate on `id`.
+     */
+    PartnerWebhookEnvelope: {
+      id: string;
+      type: components["schemas"]["WebhookEventType"];
+      /** Format: date-time */
+      createdAt: string;
+      data: {
+        [key: string]: unknown;
+      };
+    };
+    PartnerShipmentWebhookData: {
+      shipmentId: string;
+      awb: string;
+      status: components["schemas"]["ShipmentStatus"];
+      /** @description Previous shipment status; empty only when no prior status exists. */
+      fromStatus: string;
+      /** Format: date-time */
+      occurredAt: string;
+      reference: string;
+      reasonCode: string | null;
+    };
+    /** @description The exact envelope for the published `shipment.*` lifecycle events. */
+    PartnerShipmentStatusWebhookEnvelope: components["schemas"]["PartnerWebhookEnvelope"] & {
+      id: string;
+      /** @enum {string} */
+      type:
+        | "shipment.booked"
+        | "shipment.picked_up"
+        | "shipment.in_transit"
+        | "shipment.out_for_delivery"
+        | "shipment.delivered"
+        | "shipment.delivery_failed"
+        | "shipment.ndr"
+        | "shipment.rto_initiated"
+        | "shipment.rto_delivered"
+        | "shipment.cancelled"
+        | "shipment.lost"
+        | "shipment.damaged";
+      data: components["schemas"]["PartnerShipmentWebhookData"];
+    };
+    PartnerPickupCompletedWebhookData: {
+      pickupRequestId: string;
+      reference: string;
+      attemptId: string;
+      /** @enum {string} */
+      status: "COMPLETED" | "PARTIALLY_COMPLETED";
+      /** @enum {string} */
+      outcome: "COMPLETED" | "PARTIAL";
+      /** Format: date-time */
+      occurredAt: string;
+      piecesCollected: number;
+      shipments: {
+        shipmentId: string;
+        awb: string;
+      }[];
+    };
+    PartnerPickupCompletedWebhookEnvelope: components["schemas"]["PartnerWebhookEnvelope"] & {
+      id: string;
+      /** @enum {string} */
+      type: "pickup.completed";
+      data: components["schemas"]["PartnerPickupCompletedWebhookData"];
+    };
+    PartnerPODCapturedWebhookData: {
+      podId: string;
+      shipmentId: string;
+      awb: string;
+      /** @enum {string} */
+      podType: "DELIVERY" | "RTO_RETURN" | "CUSTOMER_PICKUP" | "HANDOVER";
+      /** Format: date-time */
+      deliveredAt: string;
+      /** Format: date-time */
+      recordedAt: string;
+      otpVerified: boolean;
+      signatureCaptured: boolean;
+      photoCaptured: boolean;
+      artifactCount: number;
+    };
+    PartnerPODCapturedWebhookEnvelope: components["schemas"]["PartnerWebhookEnvelope"] & {
+      id: string;
+      /** @enum {string} */
+      type: "pod.captured";
+      data: components["schemas"]["PartnerPODCapturedWebhookData"];
+    };
+    PartnerCODCollectedWebhookData: {
+      collectionId: string;
+      shipmentId: string;
+      awb: string;
+      amountMinor: components["schemas"]["MinorAmount"];
+      currency: string;
+      /** @enum {string} */
+      paymentMode:
+        "CASH" | "UPI" | "CARD" | "WALLET" | "BANK_TRANSFER" | "CHEQUE";
+      /** Format: date-time */
+      collectedAt: string;
+      /** @enum {string} */
+      custodyStatus: "AGENT_COLLECTED";
+      /**
+       * @description Collection is not merchant payment settlement.
+       * @constant
+       */
+      reconciliationStatus: "PENDING";
+    };
+    PartnerCODCollectedWebhookEnvelope: components["schemas"]["PartnerWebhookEnvelope"] & {
+      id: string;
+      /** @enum {string} */
+      type: "cod.collected";
+      data: components["schemas"]["PartnerCODCollectedWebhookData"];
+    };
     CreateWebhookEndpointRequest: {
       name: string;
       /**
        * Format: uri
-       * @description Must be HTTPS. Payloads carry customer data.
+       * @description Public HTTPS URL on port 443. Userinfo, redirects, local/private,
+       *     link-local, multicast, unspecified, ULA, special-use, and cloud
+       *     metadata targets are rejected. Every DNS answer must be public.
        */
       url: string;
       events: components["schemas"]["WebhookEventType"][];
@@ -13148,8 +13327,10 @@ export interface components {
          * @description Reject a timestamp older than this. Including the timestamp in
          *     the signed string is what makes a captured request
          *     un-replayable by a third party.
+         * @example 300
+         * @constant
          */
-        toleranceSec?: number;
+        toleranceSec?: 300;
       };
       warning?: string;
     };
@@ -13189,9 +13370,7 @@ export interface components {
       /** Format: uri */
       url?: string;
       /** @description The exact bytes that were signed and sent. */
-      payload?: {
-        [key: string]: unknown;
-      };
+      payload?: components["schemas"]["PartnerWebhookEnvelope"];
     };
     WebhookDeliveryPage: {
       data?: components["schemas"]["WebhookDelivery"][];
@@ -19265,7 +19444,7 @@ export interface operations {
         };
       };
       403: components["responses"]["PartnerScopeMissing"];
-      /** @description The URL is not HTTPS, or an event type is unknown. */
+      /** @description The URL is not a safe public HTTPS destination, or an event type is unknown. */
       422: {
         headers: {
           [name: string]: unknown;
@@ -19573,7 +19752,7 @@ export interface operations {
           "application/json": components["schemas"]["CreatedWebhookEndpoint"];
         };
       };
-      /** @description The URL is not HTTPS, or an event type is unknown. */
+      /** @description The URL is not a safe public HTTPS destination, or an event type is unknown. */
       422: {
         headers: {
           [name: string]: unknown;

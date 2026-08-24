@@ -297,6 +297,31 @@ Then read `docs/SECURITY_REVIEW.md` §3 for what the controls are supposed to
 prevent, and preserve logs before they rotate: 50 MB × 5 is not long during an
 attack.
 
+### Webhook egress / SSRF containment
+
+The application accepts webhook destinations only as public HTTPS/443 URLs. It
+validates every DNS answer at registration, immediately before delivery, and in
+the dialer that pins the actual connection. Redirects and environment HTTP
+proxies are disabled for webhook delivery.
+
+Keep an independent infrastructure egress policy anyway. The API and worker
+containers should be able to reach approved recursive DNS and public TCP/443,
+but must not reach:
+
+- loopback, RFC1918, carrier-grade NAT, link-local, multicast, unspecified, and
+  IPv6 ULA ranges;
+- the Docker bridge, database, Redis, metrics, host-management, or other private
+  service networks;
+- cloud metadata endpoints, including `169.254.169.254` and provider-specific
+  IPv6 metadata addresses.
+
+Apply and test those rules in the hosting firewall/container network layer; do
+not rely on application validation as the only barrier. After a firewall or DNS
+change, register a known public test receiver and confirm one delivery, then
+confirm private literals and a hostname resolving to a private address are
+rejected. A `302`/`307` response must be recorded as a failed attempt and must
+not cause a second request.
+
 ---
 
 ## 10. Routine

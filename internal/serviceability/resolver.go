@@ -61,6 +61,8 @@ type Request struct {
 	OrganizationID int64
 	OriginPincode  string
 	DestPincode    string
+	OriginCountry  string
+	DestCountry    string
 	ServiceCode    string
 	At             time.Time
 	IncludeExplain bool
@@ -217,11 +219,20 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (*Result, error) {
 	if req.At.IsZero() {
 		req.At = time.Now()
 	}
+	originCountry := strings.ToUpper(strings.TrimSpace(req.OriginCountry))
+	if originCountry == "" {
+		originCountry = geography.DefaultCountry
+	}
+	destCountry := strings.ToUpper(strings.TrimSpace(req.DestCountry))
+	if destCountry == "" {
+		destCountry = geography.DefaultCountry
+	}
 	explanation := &Explanation{
 		ID:         publicid.New(publicid.PrefixExplanation),
 		ResolvedAt: req.At,
 		Request: map[string]any{
-			"originPincode": req.OriginPincode, "destinationPincode": req.DestPincode,
+			"originPincode": req.OriginPincode, "originCountry": originCountry,
+			"destinationPincode": req.DestPincode, "destinationCountry": destCountry,
 			"serviceCode": req.ServiceCode, "at": req.At,
 		},
 	}
@@ -232,12 +243,12 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	// 1. Resolve both PIN codes.
-	origin, err := r.geo.LookupPincode(ctx, req.OriginPincode, geography.DefaultCountry)
+	origin, err := r.geo.LookupPincode(ctx, req.OriginPincode, originCountry)
 	if err != nil {
 		return r.notServiceable(ctx, res, explanation, ReasonUnknownPincode,
 			"The origin PIN code is not recognised."), nil
 	}
-	dest, err := r.geo.LookupPincode(ctx, req.DestPincode, geography.DefaultCountry)
+	dest, err := r.geo.LookupPincode(ctx, req.DestPincode, destCountry)
 	if err != nil {
 		return r.notServiceable(ctx, res, explanation, ReasonUnknownPincode,
 			"The destination PIN code is not recognised."), nil

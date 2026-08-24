@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -325,7 +326,9 @@ func (b *Booker) prepare(ctx context.Context, p *tenant.Principal, req BookingRe
 	route, err := b.routing.Resolve(ctx, serviceability.Request{
 		OrganizationID: p.OrganizationID,
 		OriginPincode:  origin.Code, DestPincode: dest.Code,
-		ServiceCode: svc.Code, At: at, IncludeExplain: true,
+		OriginCountry: prep.request.Sender.CountryCode,
+		DestCountry:   prep.request.Recipient.CountryCode,
+		ServiceCode:   svc.Code, At: at, IncludeExplain: true,
 	})
 	if err != nil {
 		return nil, err
@@ -415,7 +418,15 @@ func (b *Booker) resolveAddress(
 		addr.sourceAddressID = &saved.ID
 		fillFromSaved(addr, saved)
 	}
-	return b.geo.RequireActivePincode(ctx, addr.Pincode, geography.DefaultCountry)
+	country := strings.ToUpper(strings.TrimSpace(addr.CountryCode))
+	if country == "" {
+		country = strings.ToUpper(strings.TrimSpace(p.OrganizationCountry))
+	}
+	if country == "" {
+		country = geography.DefaultCountry
+	}
+	addr.CountryCode = country
+	return b.geo.RequireActivePincode(ctx, addr.Pincode, country)
 }
 
 func fillFromSaved(addr *Address, saved dbgen.CustomerAddress) {
@@ -445,6 +456,9 @@ func fillFromSaved(addr *Address, saved dbgen.CustomerAddress) {
 	}
 	if addr.Pincode == "" {
 		addr.Pincode = saved.Pincode
+	}
+	if addr.CountryCode == "" {
+		addr.CountryCode = saved.CountryCode
 	}
 	if addr.Latitude == nil {
 		addr.Latitude = saved.Latitude
@@ -558,10 +572,6 @@ func (b *Booker) writeAddressSnapshots(ctx context.Context, q *dbgen.Queries, pr
 		{"SENDER", prep.request.Sender},
 		{"RECIPIENT", prep.request.Recipient},
 	} {
-		country := spec.addr.CountryCode
-		if country == "" {
-			country = "IN"
-		}
 		params := dbgen.CreateAddressSnapshotParams{
 			OrganizationID: s.OrganizationID, ShipmentID: s.ID, Role: spec.role,
 			SourceAddressID: spec.addr.sourceAddressID,
@@ -570,7 +580,7 @@ func (b *Booker) writeAddressSnapshots(ctx context.Context, q *dbgen.Queries, pr
 			Email: optional(spec.addr.Email), Line1: spec.addr.Line1,
 			Line2: optional(spec.addr.Line2), Landmark: optional(spec.addr.Landmark),
 			CityName: spec.addr.City, StateName: spec.addr.State,
-			Pincode: spec.addr.Pincode, CountryCode: country,
+			Pincode: spec.addr.Pincode, CountryCode: spec.addr.CountryCode,
 			Latitude: spec.addr.Latitude, Longitude: spec.addr.Longitude,
 		}
 		if _, err := q.CreateAddressSnapshot(ctx, params); err != nil {

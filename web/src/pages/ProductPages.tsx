@@ -31,7 +31,13 @@ import {
   TableCell,
   TableHead,
 } from "../components/ui";
-import { formatMoney, formatWeight, titleCase } from "../lib/utils";
+import {
+  cmToMm,
+  formatDimensionsCm,
+  formatMoney,
+  formatWeight,
+  titleCase,
+} from "../lib/utils";
 
 const productSchema = z.object({
   code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
@@ -40,9 +46,9 @@ const productSchema = z.object({
   mode: z.enum(["AIR", "SURFACE", "RAIL", "LOCAL"]),
   minWeightGrams: z.number().int().min(1),
   maxWeightGrams: z.number().int().min(1),
-  maxLengthMm: z.number().int().optional(),
-  maxWidthMm: z.number().int().optional(),
-  maxHeightMm: z.number().int().optional(),
+  maxLengthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  maxWidthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+  maxHeightCm: z.number().min(0.1).multipleOf(0.1).optional(),
   volumetricDivisor: z.number().int().min(1),
   weightRoundingGrams: z.number().int().min(1),
   slaTransitHours: z.number().int().min(1),
@@ -206,16 +212,21 @@ function CreateProductDialog({
     },
   });
   const mutation = useMutation({
-    mutationFn: (values: ProductValues) =>
-      apiRequest<CourierService>("/api/v1/courier-services", {
+    mutationFn: (values: ProductValues) => {
+      const { maxLengthCm, maxWidthCm, maxHeightCm, ...product } = values;
+      return apiRequest<CourierService>("/api/v1/courier-services", {
         method: "POST",
         body: {
-          ...values,
+          ...product,
           code: values.code.toUpperCase(),
           description: values.description || undefined,
           cutoffTime: values.cutoffTime || undefined,
+          maxLengthMm: cmToMm(maxLengthCm),
+          maxWidthMm: cmToMm(maxWidthCm),
+          maxHeightMm: cmToMm(maxHeightCm),
         },
-      }),
+      });
+    },
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["courier-services"] });
       toast({ tone: "success", title: "Courier product created" });
@@ -319,29 +330,35 @@ function CreateProductDialog({
             {...register("weightRoundingGrams", { valueAsNumber: true })}
           />
         </Field>
-        <Field label="Maximum length (mm)" htmlFor="maxLengthMm">
+        <Field label="Maximum length (cm)" htmlFor="maxLengthCm">
           <Input
-            id="maxLengthMm"
+            id="maxLengthCm"
             type="number"
-            {...register("maxLengthMm", {
+            min={0.1}
+            step={0.1}
+            {...register("maxLengthCm", {
               setValueAs: (value) => (value === "" ? undefined : Number(value)),
             })}
           />
         </Field>
-        <Field label="Maximum width (mm)" htmlFor="maxWidthMm">
+        <Field label="Maximum width (cm)" htmlFor="maxWidthCm">
           <Input
-            id="maxWidthMm"
+            id="maxWidthCm"
             type="number"
-            {...register("maxWidthMm", {
+            min={0.1}
+            step={0.1}
+            {...register("maxWidthCm", {
               setValueAs: (value) => (value === "" ? undefined : Number(value)),
             })}
           />
         </Field>
-        <Field label="Maximum height (mm)" htmlFor="maxHeightMm">
+        <Field label="Maximum height (cm)" htmlFor="maxHeightCm">
           <Input
-            id="maxHeightMm"
+            id="maxHeightCm"
             type="number"
-            {...register("maxHeightMm", {
+            min={0.1}
+            step={0.1}
+            {...register("maxHeightCm", {
               setValueAs: (value) => (value === "" ? undefined : Number(value)),
             })}
           />
@@ -425,7 +442,11 @@ export function ProductDetailPage() {
           />
           <Item
             label="Limits"
-            value={`${service.maxLengthMm ?? "—"} × ${service.maxWidthMm ?? "—"} × ${service.maxHeightMm ?? "—"} mm`}
+            value={formatDimensionsCm(
+              service.maxLengthMm,
+              service.maxWidthMm,
+              service.maxHeightMm,
+            )}
           />
           <Item
             label="Rounding"

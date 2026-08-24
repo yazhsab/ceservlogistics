@@ -151,7 +151,7 @@ SELECT e.event_type,
        e.from_status,
        e.occurred_at,
        e.description,
-       COALESCE(e.location_pincode, ou.pincode) AS location_pincode,
+       COALESCE(e.location_pincode, ou.pincode, '') AS location_pincode,
        ou.name AS location_name,
        ou.unit_type AS location_type,
        city.name AS location_city

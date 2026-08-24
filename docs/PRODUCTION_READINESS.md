@@ -472,11 +472,10 @@ saturation run. Listed as NOT YET VERIFIED rather than folded into a PASS.
 
 **6. CI has never run.** The pipeline is designed, not demonstrated.
 
-**7. Three API surfaces accept input they ignore.** `webhook_subscriptions.filter`
-is stored and never read; report `format: JSON` always produces CSV;
-`pickup.completed`, `pod.captured` and `cod.collected` are in the published event
-catalogue with no emitter. Each is small; together they are three places the
-contract is a lie.
+**7. Two API surfaces accept input they ignore.** `webhook_subscriptions.filter`
+is stored and never read; report `format: JSON` always produces CSV. Phase 2
+closed the former event-catalogue gap by adding transactional emitters for
+`pickup.completed`, `pod.captured`, and `cod.collected`.
 
 **8. No real email provider.** Termii covers SMS and WhatsApp. Email — the
 cheapest channel and the bulk of the intended mix — has only a logging sender.

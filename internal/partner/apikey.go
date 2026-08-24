@@ -304,6 +304,7 @@ func (s *KeyService) Verify(ctx context.Context, token string, clientIP net.IP) 
 			OrganizationCode:      row.OrganizationCode,
 			OrganizationCurrency:  row.OrganizationCurrency,
 			OrganizationTimezone:  row.OrganizationTimezone,
+			OrganizationCountry:   row.OrganizationCountry,
 			OrganizationAWBPrefix: row.OrganizationAwbPrefix,
 		},
 		KeyID: row.ID, KeyName: row.Name, Scopes: row.Scopes, RateLimit: rateLimit,

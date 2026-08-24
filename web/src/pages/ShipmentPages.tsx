@@ -57,6 +57,7 @@ import {
 } from "../components/ui";
 import {
   formatDateTime,
+  formatDimensionsCm,
   formatMoney,
   formatWeight,
   safeDownloadName,
@@ -698,8 +699,11 @@ function PackagesTab({ shipment }: { shipment: Shipment }) {
                   {formatWeight(item.volumetricWeightGrams)}
                 </TableCell>
                 <TableCell>
-                  {item.lengthMm ?? "—"} × {item.widthMm ?? "—"} ×{" "}
-                  {item.heightMm ?? "—"} mm
+                  {formatDimensionsCm(
+                    item.lengthMm,
+                    item.widthMm,
+                    item.heightMm,
+                  )}
                 </TableCell>
                 <TableCell>{item.contentDescription}</TableCell>
               </tr>

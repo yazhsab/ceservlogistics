@@ -91,6 +91,45 @@ export function formatWeight(grams?: number | null) {
     : `${grams} g`;
 }
 
+/** Convert customer-facing kilograms to the API's exact integer grams. */
+export function kgToGrams(kilograms?: number | null) {
+  if (kilograms == null || !Number.isFinite(kilograms)) return undefined;
+  return Math.round(kilograms * 1000);
+}
+
+/** Convert API grams to the kilograms used for shipment measurement. */
+export function gramsToKg(grams?: number | null) {
+  if (grams == null || !Number.isFinite(grams)) return undefined;
+  return grams / 1000;
+}
+
+/** Convert customer-facing centimetres to the API's exact millimetre unit. */
+export function cmToMm(centimetres?: number | null) {
+  if (centimetres == null || !Number.isFinite(centimetres)) return undefined;
+  return Math.round(centimetres * 10);
+}
+
+/** Convert API millimetres to the centimetres used for measurement and display. */
+export function mmToCm(millimetres?: number | null) {
+  if (millimetres == null || !Number.isFinite(millimetres)) return undefined;
+  return millimetres / 10;
+}
+
+export function formatDimensionsCm(
+  lengthMm?: number | null,
+  widthMm?: number | null,
+  heightMm?: number | null,
+) {
+  const formatter = new Intl.NumberFormat("en-NG", {
+    maximumFractionDigits: 1,
+  });
+  const dimension = (millimetres?: number | null) => {
+    const centimetres = mmToCm(millimetres);
+    return centimetres == null ? "—" : formatter.format(centimetres);
+  };
+  return `${dimension(lengthMm)} × ${dimension(widthMm)} × ${dimension(heightMm)} cm`;
+}
+
 export function formatDateTime(
   value?: string | null,
   timeZone = "Africa/Lagos",

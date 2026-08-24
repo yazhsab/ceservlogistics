@@ -59,6 +59,18 @@ at once, before anything binds a port.
 and never published. If you move the database off-box, switch to `require` and
 supply a CA.
 
+### Outbound webhook egress
+
+Webhook delivery intentionally ignores `HTTP_PROXY`/`HTTPS_PROXY`, permits only
+public HTTPS port 443, validates every DNS answer at connection time, and never
+follows redirects. Configure the VPS/container firewall as a second control:
+allow the API and worker only the recursive DNS path they require and public
+TCP/443; deny private/service networks, the Docker bridge, host management, and
+cloud metadata ranges. Keep PostgreSQL, Redis, and metrics reachable only on
+their dedicated internal paths, not through general webhook egress. The
+verification procedure is in `docs/RUNBOOK.md` under “Webhook egress / SSRF
+containment”.
+
 ---
 
 ## 3. TLS

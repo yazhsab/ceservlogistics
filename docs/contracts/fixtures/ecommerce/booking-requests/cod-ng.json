@@ -1,0 +1,67 @@
+{
+  "customerId": "cus_01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "referenceNumber": "ahiabekee:NG-MAIN:AHB-20260823-1001:F-1",
+  "serviceCode": "EXPRESS",
+  "paymentMode": "COD",
+  "sender": {
+    "contactName": "Ada Okafor",
+    "companyName": "Ahiabekee Lagos Fulfilment Centre",
+    "phone": "+2348012345601",
+    "email": "dispatch@example.test",
+    "line1": "12 Warehouse Avenue",
+    "landmark": "Near the cargo terminal",
+    "city": "Ikeja",
+    "state": "Lagos",
+    "pincode": "100001",
+    "countryCode": "NG"
+  },
+  "recipient": {
+    "contactName": "Chinedu Eze",
+    "phone": "+2348012345602",
+    "email": "recipient@example.test",
+    "line1": "25 Example Crescent",
+    "line2": "Wuse II",
+    "city": "Abuja",
+    "state": "Federal Capital Territory",
+    "pincode": "900001",
+    "countryCode": "NG"
+  },
+  "packages": [
+    {
+      "reference": "AHB-1001-P1",
+      "actualWeightGrams": 1800,
+      "lengthMm": 400,
+      "widthMm": 300,
+      "heightMm": 250,
+      "contentDescription": "Home appliances",
+      "declaredValueMinor": 11500000
+    },
+    {
+      "reference": "AHB-1001-P2",
+      "actualWeightGrams": 700,
+      "lengthMm": 300,
+      "widthMm": 250,
+      "heightMm": 150,
+      "contentDescription": "Books and accessories",
+      "declaredValueMinor": 3500000
+    }
+  ],
+  "declaredValueMinor": 15000000,
+  "codAmountMinor": 16625000,
+  "insuranceRequired": true,
+  "contentDescription": "Home appliances, books and accessories",
+  "specialInstructions": "Call the recipient before arrival.",
+  "isFragile": true,
+  "isDangerousGoods": false,
+  "metadata": {
+    "canonicalSchemaVersion": "CommerceFulfillmentReady/v1",
+    "commerceEventId": "cfr_01K36D8K6G5YQ9H2J4M7N8P0RS",
+    "commercePlatform": "ahiabekee",
+    "commerceStoreId": "ng-main",
+    "commerceOrderId": "1001",
+    "commerceFulfillmentId": "1001-1",
+    "commerceFulfillmentVersion": 1,
+    "sourceChannel": "web",
+    "salesChannel": "direct"
+  }
+}
