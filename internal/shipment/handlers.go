@@ -44,6 +44,7 @@ func NewHandler(b *Booker, idem *idempotency.Executor, maxPackages int) *Handler
 // Routes mounts shipment endpoints under /shipments.
 func (h *Handler) Routes(r chi.Router) {
 	r.With(auth.RequirePermission("shipment.create")).Post("/", httpx.Wrap(h.create))
+	r.With(auth.RequirePermission("shipment.create")).Post("/preview", httpx.Wrap(h.preview))
 	r.With(auth.RequirePermission("shipment.read")).Get("/", httpx.Wrap(h.list))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}", httpx.Wrap(h.get))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}/events", httpx.Wrap(h.events))
@@ -75,17 +76,18 @@ type Detail struct {
 	Packages  []PackageView  `json:"packages"`
 	Addresses map[string]any `json:"addresses,omitempty"`
 
-	PieceCount            int32      `json:"pieceCount"`
-	ActualWeightGrams     int32      `json:"actualWeightGrams"`
-	VolumetricWeightGrams int32      `json:"volumetricWeightGrams"`
-	ChargeableWeightGrams int32      `json:"chargeableWeightGrams"`
-	Currency              string     `json:"currency"`
-	DeclaredValueMinor    int64      `json:"declaredValueMinor"`
-	CODAmountMinor        int64      `json:"codAmountMinor"`
-	TotalAmountMinor      int64      `json:"totalAmountMinor"`
-	InsuranceRequired     bool       `json:"insuranceRequired"`
-	SLAHours              *int32     `json:"slaHours,omitempty"`
-	PromisedDeliveryAt    *time.Time `json:"promisedDeliveryAt,omitempty"`
+	PieceCount            int32               `json:"pieceCount"`
+	ActualWeightGrams     int32               `json:"actualWeightGrams"`
+	VolumetricWeightGrams int32               `json:"volumetricWeightGrams"`
+	ChargeableWeightGrams int32               `json:"chargeableWeightGrams"`
+	Currency              string              `json:"currency"`
+	DeclaredValueMinor    int64               `json:"declaredValueMinor"`
+	CODAmountMinor        int64               `json:"codAmountMinor"`
+	TotalAmountMinor      int64               `json:"totalAmountMinor"`
+	InsuranceRequired     bool                `json:"insuranceRequired"`
+	Commercial            *CommercialSnapshot `json:"commercial,omitempty"`
+	SLAHours              *int32              `json:"slaHours,omitempty"`
+	PromisedDeliveryAt    *time.Time          `json:"promisedDeliveryAt,omitempty"`
 
 	ContentDescription  string `json:"contentDescription"`
 	SpecialInstructions string `json:"specialInstructions,omitempty"`
@@ -243,6 +245,7 @@ func ValidateBooking(req *BookingRequest, maxPackages int) error {
 	if req.ReferenceNumber != "" {
 		req.ReferenceNumber = v.Text("referenceNumber", req.ReferenceNumber, 1, 64, false)
 	}
+	validateCommercial(v, req)
 	v.NonNegativeMinor("declaredValueMinor", req.DeclaredValueMinor)
 	v.NonNegativeMinor("codAmountMinor", req.CODAmountMinor)
 
@@ -271,12 +274,13 @@ func ValidateBooking(req *BookingRequest, maxPackages int) error {
 	}
 	// A per-package breakdown that disagrees with the shipment total would make
 	// an insurance claim ambiguous.
-	if declaredSum > 0 && req.DeclaredValueMinor > 0 && declaredSum != req.DeclaredValueMinor {
+	if declaredSum > 0 && (req.DeclaredValueMinor > 0 || req.Customs != nil) && declaredSum != req.DeclaredValueMinor {
 		v.Addf("declaredValueMinor",
 			"Must equal the sum of package declared values (%d).", declaredSum)
 	}
-	if req.DeclaredValueMinor == 0 && declaredSum > 0 {
+	if req.Customs == nil && req.DeclaredValueMinor == 0 && declaredSum > 0 {
 		req.DeclaredValueMinor = declaredSum
+		v.NonNegativeMinor("declaredValueMinor", req.DeclaredValueMinor)
 	}
 
 	switch req.PaymentMode {
@@ -305,7 +309,7 @@ func validateAddress(v *validate.Validator, prefix string, a *Address) {
 		// validated here and the rest is filled in during resolution.
 		v.PublicID(prefix+".addressId", a.AddressID, publicid.PrefixCustomerAddress, false)
 		if a.Pincode != "" {
-			a.Pincode = v.Pincode(prefix+".pincode", a.Pincode)
+			a.Pincode = v.PostalCode(prefix+".pincode", a.Pincode, a.CountryCode)
 		}
 		a.ContactName = v.Text(prefix+".contactName", a.ContactName, 0, 160, false)
 		a.Phone = v.Phone(prefix+".phone", a.Phone, false)
@@ -319,7 +323,7 @@ func validateAddress(v *validate.Validator, prefix string, a *Address) {
 	a.Landmark = v.Text(prefix+".landmark", a.Landmark, 0, 120, false)
 	a.City = v.Text(prefix+".city", a.City, 1, 120, true)
 	a.State = v.Text(prefix+".state", a.State, 1, 120, true)
-	a.Pincode = v.Pincode(prefix+".pincode", a.Pincode)
+	a.Pincode = v.PostalCode(prefix+".pincode", a.Pincode, a.CountryCode)
 	a.CompanyName = v.Text(prefix+".companyName", a.CompanyName, 0, 160, false)
 	if a.Email != "" {
 		a.Email = v.Email(prefix+".email", a.Email)
@@ -736,6 +740,23 @@ func (b *Booker) loadDetail(ctx context.Context, q *dbgen.Queries, s dbgen.GetSh
 				"countryCode": a.CountryCode,
 			}
 		}
+	}
+	commercial, cErr := q.GetShipmentCommercialSnapshot(ctx, dbgen.GetShipmentCommercialSnapshotParams{OrganizationID: s.OrganizationID, ShipmentID: s.ID})
+	if cErr == nil {
+		d.Commercial = &CommercialSnapshot{}
+		if err := json.Unmarshal(commercial.Insurance, &d.Commercial.Insurance); err != nil {
+			return nil, apierr.Internal(err)
+		}
+		if len(commercial.Customs) > 0 {
+			if err := json.Unmarshal(commercial.Customs, &d.Commercial.Customs); err != nil {
+				return nil, apierr.Internal(err)
+			}
+		}
+		if err := json.Unmarshal(commercial.Billing, &d.Commercial.Billing); err != nil {
+			return nil, apierr.Internal(err)
+		}
+	} else if !database.IsNoRows(cErr) {
+		return nil, apierr.Internal(cErr)
 	}
 	return d, nil
 }

@@ -102,6 +102,16 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
   page,
 }) => {
   const api = await installMockApi(page, { bookingDelayMs: 300 });
+  await page.route("**/api/v1/geography/states?*", (route) =>
+    route.fulfill({
+      json: {
+        data: [
+          { id: "state-lagos", code: "LA", name: "Lagos" },
+          { id: "state-fct", code: "FC", name: "FCT" },
+        ],
+      },
+    }),
+  );
   await login(page);
   await page.goto("/shipments/new");
   await page
@@ -112,20 +122,29 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
   await page.getByLabel("Phone").first().fill("08031234567");
   await page.getByLabel("Address line 1").first().fill("12 Marina Road");
   await page.getByLabel("Postal code").first().fill("100001");
+  await page
+    .getByRole("combobox", { name: "State", exact: true })
+    .first()
+    .selectOption("Lagos");
+  await page.getByLabel("City / state capital").first().fill("Lagos");
   await page.getByLabel("Contact name").nth(1).fill("Amina Bello");
   await page.getByLabel("Phone").nth(1).fill("08037654321");
   await page.getByLabel("Address line 1").nth(1).fill("8 Gimbiya Street");
   await page.getByLabel("Postal code").nth(1).fill("900001");
-  await page.getByLabel("Courier product").selectOption("EXPRESS");
-  await page.getByLabel("Contents").fill("Documents");
   await page
-    .getByRole("button", { name: "Check route & price" })
-    .last()
-    .click();
+    .getByRole("combobox", { name: "State", exact: true })
+    .nth(1)
+    .selectOption("FCT");
+  await page.getByLabel("City / state capital").nth(1).fill("Abuja");
+  await page.getByLabel("Courier product").selectOption("EXPRESS");
+  await page.getByLabel("General description of item").fill("Documents");
+  await page.getByRole("button", { name: "Preview shipment" }).last().click();
   await expect(
-    page.locator("strong:visible", { hasText: "Final total" }),
+    page.locator("strong:visible", { hasText: "Shipment charges total" }),
   ).toBeVisible();
-  const book = page.getByRole("button", { name: "Book shipment" }).last();
+  const book = page
+    .getByRole("button", { name: /^Confirm & book(?: shipment)?$/ })
+    .filter({ visible: true });
   await book.dblclick();
   await expect(page.getByText("Shipment booked successfully")).toBeVisible();
   expect(api.shipmentPosts).toBe(1);

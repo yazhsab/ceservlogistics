@@ -110,8 +110,15 @@ func (b *Booker) Cancel(
 
 		// Cancelling a credit booking returns the reserved headroom.
 		if updated.PaymentMode == "CREDIT" {
+			payerID := updated.CustomerID
+			commercial, cErr := q.GetShipmentCommercialSnapshot(ctx, dbgen.GetShipmentCommercialSnapshotParams{OrganizationID: p.OrganizationID, ShipmentID: updated.ID})
+			if cErr == nil && commercial.TransportCustomerID != nil {
+				payerID = *commercial.TransportCustomerID
+			} else if cErr != nil && !database.IsNoRows(cErr) {
+				return apierr.Internal(cErr)
+			}
 			if rErr := b.customer.ReleaseCredit(ctx, tx, p.OrganizationID,
-				updated.CustomerID, updated.TotalAmountMinor, &updated.ID, actorUser,
+				payerID, updated.TotalAmountMinor, &updated.ID, actorUser,
 				"Shipment "+updated.Awb+" cancelled"); rErr != nil {
 				return rErr
 			}

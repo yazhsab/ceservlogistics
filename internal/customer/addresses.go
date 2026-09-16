@@ -7,7 +7,6 @@ import (
 
 	"github.com/ceserve/courier-os/internal/audit"
 	"github.com/ceserve/courier-os/internal/dbgen"
-	"github.com/ceserve/courier-os/internal/geography"
 	"github.com/ceserve/courier-os/internal/platform/apierr"
 	"github.com/ceserve/courier-os/internal/platform/database"
 	"github.com/ceserve/courier-os/internal/platform/httpx"
@@ -17,6 +16,7 @@ import (
 )
 
 type addressRequest struct {
+	CountryCode  string   `json:"countryCode,omitempty"`
 	Label        string   `json:"label"`
 	AddressType  string   `json:"addressType"`
 	ContactName  string   `json:"contactName"`
@@ -96,7 +96,7 @@ func (h *Handler) createAddress(w http.ResponseWriter, r *http.Request) error {
 		Line2: optional(req.Line2), Landmark: optional(req.Landmark),
 		Pincode: fields.pincode, PincodeID: &fields.pincodeID,
 		CityID: fields.cityID, StateID: &fields.stateID,
-		CityName: fields.cityName, StateName: fields.stateName, CountryCode: "IN",
+		CityName: fields.cityName, StateName: fields.stateName, CountryCode: fields.countryCode,
 		Latitude: req.Latitude, Longitude: req.Longitude, IsDefault: req.IsDefault,
 	}
 
@@ -193,10 +193,16 @@ func (h *Handler) updateAddress(w http.ResponseWriter, r *http.Request) error {
 	params.Line2 = optional(req.Line2)
 	params.Landmark = optional(req.Landmark)
 	params.AltPhone = optional(req.AltPhone)
-	if req.Pincode != "" {
-		pin := v.Pincode("pincode", req.Pincode)
+	if req.Pincode != "" || req.CountryCode != "" {
+		country := v.CountryCode("countryCode", validate.AddressCountry(req.CountryCode, existing.CountryCode), true)
+		pinValue := req.Pincode
+		if pinValue == "" {
+			pinValue = existing.Pincode
+		}
+		pin := v.PostalCode("pincode", pinValue, country)
+		params.CountryCode = &country
 		if pin != "" {
-			pincode, pErr := h.geo.LookupPincode(r.Context(), pin, geography.DefaultCountry)
+			pincode, pErr := h.geo.LookupPincode(r.Context(), pin, country)
 			if pErr != nil {
 				v.Add("pincode", "This PIN code is not recognised.")
 			} else {
@@ -538,6 +544,7 @@ func (h *Handler) setBillingProfile(w http.ResponseWriter, r *http.Request) erro
 // ---- helpers ---------------------------------------------------------------
 
 type addressFields struct {
+	countryCode  string
 	label        string
 	addressType  string
 	contactName  string
@@ -554,14 +561,20 @@ type addressFields struct {
 
 func (h *Handler) validateAddress(r *http.Request, req addressRequest, required bool) (*addressFields, error) {
 	v := validate.New()
+	p, err := tenant.Require(r)
+	if err != nil {
+		return nil, err
+	}
+	country := v.CountryCode("countryCode", validate.AddressCountry(req.CountryCode, p.OrganizationCountry), true)
 	f := &addressFields{
+		countryCode:  country,
 		label:        v.Text("label", req.Label, 1, 80, required),
 		addressType:  v.Enum("addressType", req.AddressType, AddressTypes, required),
 		contactName:  v.Text("contactName", req.ContactName, 2, 160, required),
 		contactPhone: v.Phone("contactPhone", req.ContactPhone, required),
 		altPhone:     v.Phone("altPhone", req.AltPhone, false),
 		line1:        v.Text("line1", req.Line1, 3, 200, required),
-		pincode:      v.Pincode("pincode", req.Pincode),
+		pincode:      v.PostalCode("pincode", req.Pincode, country),
 	}
 	v.Latitude("latitude", req.Latitude)
 	v.Longitude("longitude", req.Longitude)
@@ -570,7 +583,7 @@ func (h *Handler) validateAddress(r *http.Request, req addressRequest, required 
 	}
 	// The address must resolve against the shared PIN code dataset so booking
 	// can route it without a second lookup path.
-	pincode, err := h.geo.RequireActivePincode(r.Context(), f.pincode, geography.DefaultCountry)
+	pincode, err := h.geo.RequireActivePincode(r.Context(), f.pincode, country)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +626,7 @@ func addressViewFromRow(a dbgen.CustomerAddress) map[string]any {
 		"id": a.PublicID, "label": a.Label, "addressType": a.AddressType,
 		"contactName": a.ContactName, "contactPhone": a.ContactPhone, "altPhone": a.AltPhone,
 		"line1": a.Line1, "line2": a.Line2, "landmark": a.Landmark,
-		"city": a.CityName, "state": a.StateName, "pincode": a.Pincode,
+		"city": a.CityName, "state": a.StateName, "pincode": a.Pincode, "countryCode": a.CountryCode,
 		"latitude": a.Latitude, "longitude": a.Longitude,
 		"isDefault": a.IsDefault, "status": a.Status,
 	}

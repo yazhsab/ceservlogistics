@@ -25,6 +25,8 @@ import (
 // ---------------------------------------------------------------------------
 
 type serviceabilityRequest struct {
+	OriginCountry      string     `json:"originCountry,omitempty"`
+	DestinationCountry string     `json:"destinationCountry,omitempty"`
 	OriginPincode      string     `json:"originPincode"`
 	DestinationPincode string     `json:"destinationPincode"`
 	ServiceCode        string     `json:"serviceCode"`
@@ -41,8 +43,10 @@ func (h *Handler) checkServiceability(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	v := validate.New()
-	origin := v.Pincode("originPincode", req.OriginPincode)
-	dest := v.Pincode("destinationPincode", req.DestinationPincode)
+	originCountry := v.CountryCode("originCountry", validate.AddressCountry(req.OriginCountry, p.OrganizationCountry), true)
+	destCountry := v.CountryCode("destinationCountry", validate.AddressCountry(req.DestinationCountry, p.OrganizationCountry), true)
+	origin := v.PostalCode("originPincode", req.OriginPincode, originCountry)
+	dest := v.PostalCode("destinationPincode", req.DestinationPincode, destCountry)
 	serviceCode := v.Code("serviceCode", req.ServiceCode)
 	if err := v.Err(); err != nil {
 		return err
@@ -58,6 +62,7 @@ func (h *Handler) checkServiceability(w http.ResponseWriter, r *http.Request) er
 	res, err := h.routing.Resolve(r.Context(), serviceability.Request{
 		OrganizationID: p.OrganizationID,
 		OriginPincode:  origin, DestPincode: dest,
+		OriginCountry: originCountry, DestCountry: destCountry,
 		ServiceCode: serviceCode, At: at,
 	})
 	if err != nil {
@@ -400,4 +405,20 @@ func (h *Handler) whoami(w http.ResponseWriter, r *http.Request) error {
 		"rateLimitPerMinute": limit,
 		"availableScopes":    partner.AllScopes,
 	})
+}
+
+func (h *Handler) previewShipment(w http.ResponseWriter, r *http.Request) error {
+	p, err := principal(r)
+	if err != nil {
+		return err
+	}
+	var req shipment.BookingRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		return err
+	}
+	preview, err := h.booker.Preview(r.Context(), p, req)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, preview)
 }

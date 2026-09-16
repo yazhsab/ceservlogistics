@@ -23,6 +23,7 @@ import {
   type ServiceListResponse,
 } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
+import type { components } from "../api/schema";
 import { useToast } from "../components/ToastProvider";
 import {
   Badge,
@@ -996,7 +997,7 @@ export function RateCardVersionPage() {
         <Panel>
           <PanelHeader
             title="Surcharges"
-            description="Applied by ascending priority."
+            description="Applied in priority order. Insurance uses the configured rules only when requested."
           />
           {version.surcharges?.length ? (
             <div className="divide-y">
@@ -1011,14 +1012,36 @@ export function RateCardVersionPage() {
                       {String(rule.name ?? "Surcharge")}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {titleCase(String(rule.surchargeType ?? "CUSTOM"))} ·{" "}
-                      {titleCase(String(rule.calcType ?? "FIXED"))}
+                      {titleCase(
+                        String(rule.surchargeType ?? rule.type ?? "CUSTOM"),
+                      )}{" "}
+                      · {titleCase(String(rule.calcType ?? "FIXED"))}
+                    </p>
+                    {(rule.surchargeType ?? rule.type) === "INSURANCE" ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Insurance requested only ·{" "}
+                        {titleCase(String(rule.appliesTo ?? "FREIGHT"))}
+                        {rule.serviceCode
+                          ? ` · ${String(rule.serviceCode)}`
+                          : " · All services"}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {rule.isTaxable === false ? "Tax exempt" : "Taxable"}
+                      {typeof rule.minAmountMinor === "number"
+                        ? ` · Minimum ${formatMoney(rule.minAmountMinor, version.currency)}`
+                        : ""}
+                      {typeof rule.maxAmountMinor === "number"
+                        ? ` · Maximum ${formatMoney(rule.maxAmountMinor, version.currency)}`
+                        : ""}
                     </p>
                   </div>
                   <Badge>
-                    {String(
-                      rule.valueMinor ?? rule.percentageBp ?? "Configured",
-                    )}
+                    {typeof rule.percentageBp === "number"
+                      ? `${rule.percentageBp / 100}%`
+                      : typeof rule.valueMinor === "number"
+                        ? formatMoney(rule.valueMinor, version.currency)
+                        : "Configured"}
                   </Badge>
                 </div>
               ))}
@@ -1247,34 +1270,73 @@ function ZoneRateDialog({
   );
 }
 
-const surchargeSchema = z.object({
-  code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
-  name: z.string().min(2),
-  surchargeType: z.enum([
-    "FUEL",
-    "REMOTE_AREA",
-    "COD",
-    "INSURANCE",
-    "HANDLING",
-    "OVERSIZE",
-    "DOCUMENTATION",
-    "PACKAGING",
-    "APPOINTMENT",
-    "CUSTOM",
-  ]),
-  calcType: z.enum(["FIXED", "PERCENTAGE", "PER_KG"]),
-  value: z.string().optional(),
-  percentage: z.number().min(0).max(100).optional(),
-  appliesTo: z.enum([
-    "FREIGHT",
-    "FREIGHT_PLUS_SURCHARGES",
-    "DECLARED_VALUE",
-    "COD_AMOUNT",
-  ]),
-  serviceCode: z.string().optional(),
-  priority: z.number().int().min(0),
-  isTaxable: z.boolean(),
-});
+const optionalSurchargeAmount = z
+  .string()
+  .optional()
+  .refine(
+    (value) =>
+      !value ||
+      (/^\d+(\.\d{1,2})?$/.test(value) &&
+        Number.isSafeInteger(toMinorUnits(value)) &&
+        Number(value) <= 10_000_000_000),
+    "Enter a nonnegative amount with up to two decimal places.",
+  );
+const surchargeSchema = z
+  .object({
+    code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
+    name: z.string().min(2),
+    surchargeType: z.enum([
+      "FUEL",
+      "REMOTE_AREA",
+      "COD",
+      "INSURANCE",
+      "HANDLING",
+      "OVERSIZE",
+      "DOCUMENTATION",
+      "PACKAGING",
+      "APPOINTMENT",
+      "CUSTOM",
+    ]),
+    calcType: z.enum(["FIXED", "PERCENTAGE", "PER_KG"]),
+    value: optionalSurchargeAmount,
+    minimum: optionalSurchargeAmount,
+    maximum: optionalSurchargeAmount,
+    percentage: z.number().min(0).max(100).multipleOf(0.01).optional(),
+    appliesTo: z.enum([
+      "FREIGHT",
+      "FREIGHT_PLUS_SURCHARGES",
+      "DECLARED_VALUE",
+      "COD_AMOUNT",
+    ]),
+    serviceCode: z.string().optional(),
+    priority: z.number().int().min(0),
+    isTaxable: z.boolean(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.calcType === "PERCENTAGE" && values.percentage === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["percentage"],
+        message: "Enter the percentage.",
+      });
+    }
+    if (values.calcType !== "PERCENTAGE" && !values.value) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["value"],
+        message: "Enter the surcharge value.",
+      });
+    }
+    const minimum = toMinorUnits(values.minimum);
+    const maximum = toMinorUnits(values.maximum);
+    if (minimum !== undefined && maximum !== undefined && maximum < minimum) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["maximum"],
+        message: "Maximum cannot be lower than minimum.",
+      });
+    }
+  });
 type SurchargeValues = z.infer<typeof surchargeSchema>;
 
 function SurchargeDialog({
@@ -1294,6 +1356,7 @@ function SurchargeDialog({
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<SurchargeValues>({
     resolver: zodResolver(surchargeSchema),
@@ -1334,7 +1397,13 @@ function SurchargeDialog({
           serviceCode: values.serviceCode?.toUpperCase() || undefined,
           priority: values.priority,
           isTaxable: values.isTaxable,
-        },
+          minAmountMinor: toMinorUnits(values.minimum),
+          maxAmountMinor: toMinorUnits(values.maximum),
+          conditions:
+            values.surchargeType === "INSURANCE"
+              ? { requiresInsurance: true }
+              : undefined,
+        } satisfies components["schemas"]["CreateSurchargeRequest"],
       });
     },
     onSuccess: () => {
@@ -1390,7 +1459,21 @@ function SurchargeDialog({
           <Input id="surchargeName" {...register("name")} />
         </Field>
         <Field label="Type" htmlFor="surchargeType">
-          <Select id="surchargeType" {...register("surchargeType")}>
+          <Select
+            id="surchargeType"
+            {...register("surchargeType")}
+            onChange={(event) => {
+              setValue(
+                "surchargeType",
+                event.target.value as SurchargeValues["surchargeType"],
+                { shouldDirty: true },
+              );
+              if (event.target.value === "INSURANCE") {
+                setValue("calcType", "PERCENTAGE");
+                setValue("appliesTo", "DECLARED_VALUE");
+              }
+            }}
+          >
             <option>FUEL</option>
             <option>REMOTE_AREA</option>
             <option>COD</option>
@@ -1403,6 +1486,13 @@ function SurchargeDialog({
             <option>CUSTOM</option>
           </Select>
         </Field>
+        {watch("surchargeType") === "INSURANCE" ? (
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            Set the insurance rate for this version. It applies only when
+            requested, with any service restriction, limits and tax setting
+            below. Matching rules are added in priority order.
+          </p>
+        ) : null}
         <Field label="Calculation" htmlFor="surchargeCalc">
           <Select id="surchargeCalc" {...register("calcType")}>
             <option>FIXED</option>
@@ -1411,7 +1501,12 @@ function SurchargeDialog({
           </Select>
         </Field>
         {calcType === "PERCENTAGE" ? (
-          <Field label="Percentage" htmlFor="surchargePercentage">
+          <Field
+            label="Percentage"
+            htmlFor="surchargePercentage"
+            required
+            error={errors.percentage?.message}
+          >
             <Input
               id="surchargePercentage"
               type="number"
@@ -1423,7 +1518,12 @@ function SurchargeDialog({
             />
           </Field>
         ) : (
-          <Field label="Value (₦)" htmlFor="surchargeValue">
+          <Field
+            label="Value"
+            htmlFor="surchargeValue"
+            hint="In this rate card’s currency."
+            error={errors.value?.message}
+          >
             <Input
               id="surchargeValue"
               inputMode="decimal"
@@ -1438,6 +1538,30 @@ function SurchargeDialog({
             <option>DECLARED_VALUE</option>
             <option>COD_AMOUNT</option>
           </Select>
+        </Field>
+        <Field
+          label="Minimum charge"
+          htmlFor="surchargeMinimum"
+          hint="Optional, in this rate card’s currency."
+          error={errors.minimum?.message}
+        >
+          <Input
+            id="surchargeMinimum"
+            inputMode="decimal"
+            {...register("minimum")}
+          />
+        </Field>
+        <Field
+          label="Maximum charge"
+          htmlFor="surchargeMaximum"
+          hint="Optional, in this rate card’s currency."
+          error={errors.maximum?.message}
+        >
+          <Input
+            id="surchargeMaximum"
+            inputMode="decimal"
+            {...register("maximum")}
+          />
         </Field>
         <Field label="Service code" htmlFor="surchargeService">
           <Input

@@ -525,9 +525,10 @@ func (h *Handler) updateZone(w http.ResponseWriter, r *http.Request) error {
 // ---- zone mappings ---------------------------------------------------------
 
 type upsertZoneMappingRequest struct {
-	Pincode  string `json:"pincode"`
-	ZoneCode string `json:"zoneCode"`
-	IsRemote *bool  `json:"isRemote,omitempty"`
+	CountryCode string `json:"countryCode,omitempty"`
+	Pincode     string `json:"pincode"`
+	ZoneCode    string `json:"zoneCode"`
+	IsRemote    *bool  `json:"isRemote,omitempty"`
 }
 
 func (h *Handler) upsertZoneMapping(w http.ResponseWriter, r *http.Request) error {
@@ -540,13 +541,14 @@ func (h *Handler) upsertZoneMapping(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	v := validate.New()
-	pin := v.Pincode("pincode", req.Pincode)
+	country := v.CountryCode("countryCode", validate.AddressCountry(req.CountryCode, p.OrganizationCountry), true)
+	pin := v.PostalCode("pincode", req.Pincode, country)
 	zoneCode := v.Code("zoneCode", req.ZoneCode)
 	if err := v.Err(); err != nil {
 		return err
 	}
 
-	pincode, err := h.svc.LookupPincode(r.Context(), pin, DefaultCountry)
+	pincode, err := h.svc.LookupPincode(r.Context(), pin, country)
 	if err != nil {
 		return err
 	}

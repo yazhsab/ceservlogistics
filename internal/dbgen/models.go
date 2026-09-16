@@ -2495,6 +2495,16 @@ type ShipmentChargeSnapshot struct {
 	CalculatedAt          time.Time
 }
 
+type ShipmentCommercialSnapshot struct {
+	ShipmentID          int64
+	OrganizationID      int64
+	TransportCustomerID *int64
+	Insurance           []byte
+	Customs             []byte
+	Billing             []byte
+	CreatedAt           time.Time
+}
+
 type ShipmentDailyStat struct {
 	ID                  int64
 	OrganizationID      int64

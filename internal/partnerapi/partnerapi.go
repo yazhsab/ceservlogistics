@@ -277,6 +277,7 @@ func (h *Handler) Routes(r chi.Router) {
 
 	r.Route("/shipments", func(sr chi.Router) {
 		sr.Post("/", scoped(partner.ScopeShipmentCreate, h.createShipment))
+		sr.Post("/preview", scoped(partner.ScopeShipmentCreate, h.previewShipment))
 		sr.Get("/{shipmentId}", scoped(partner.ScopeShipmentRead, h.getShipment))
 		sr.Post("/{shipmentId}/cancel", scoped(partner.ScopeShipmentCancel, h.cancelShipment))
 		sr.Get("/{shipmentId}/label", scoped(partner.ScopeLabelRead, h.label))

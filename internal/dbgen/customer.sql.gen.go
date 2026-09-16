@@ -1449,29 +1449,31 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 
 const updateCustomerAddress = `-- name: UpdateCustomerAddress :one
 UPDATE customer_addresses
-SET label = COALESCE($1, label),
-    address_type = COALESCE($2, address_type),
-    contact_name = COALESCE($3, contact_name),
-    contact_phone = COALESCE($4, contact_phone),
-    alt_phone = COALESCE($5, alt_phone),
-    line1 = COALESCE($6, line1),
-    line2 = COALESCE($7, line2),
-    landmark = COALESCE($8, landmark),
-    pincode = COALESCE($9, pincode),
-    pincode_id = COALESCE($10, pincode_id),
-    city_id = COALESCE($11, city_id),
-    state_id = COALESCE($12, state_id),
-    city_name = COALESCE($13, city_name),
-    state_name = COALESCE($14, state_name),
-    latitude = COALESCE($15, latitude),
-    longitude = COALESCE($16, longitude),
-    is_default = COALESCE($17, is_default),
-    status = COALESCE($18, status)
-WHERE public_id = $19 AND organization_id = $20
+SET country_code = COALESCE($1, country_code),
+ label = COALESCE($2, label),
+    address_type = COALESCE($3, address_type),
+    contact_name = COALESCE($4, contact_name),
+    contact_phone = COALESCE($5, contact_phone),
+    alt_phone = COALESCE($6, alt_phone),
+    line1 = COALESCE($7, line1),
+    line2 = COALESCE($8, line2),
+    landmark = COALESCE($9, landmark),
+    pincode = COALESCE($10, pincode),
+    pincode_id = COALESCE($11, pincode_id),
+    city_id = COALESCE($12, city_id),
+    state_id = COALESCE($13, state_id),
+    city_name = COALESCE($14, city_name),
+    state_name = COALESCE($15, state_name),
+    latitude = COALESCE($16, latitude),
+    longitude = COALESCE($17, longitude),
+    is_default = COALESCE($18, is_default),
+    status = COALESCE($19, status)
+WHERE public_id = $20 AND organization_id = $21
 RETURNING id, public_id, organization_id, customer_id, label, address_type, contact_name, contact_phone, alt_phone, line1, line2, landmark, pincode, pincode_id, city_id, state_id, city_name, state_name, country_code, latitude, longitude, is_default, status, created_at, updated_at
 `
 
 type UpdateCustomerAddressParams struct {
+	CountryCode    *string
 	Label          *string
 	AddressType    *string
 	ContactName    *string
@@ -1496,6 +1498,7 @@ type UpdateCustomerAddressParams struct {
 
 func (q *Queries) UpdateCustomerAddress(ctx context.Context, arg UpdateCustomerAddressParams) (CustomerAddress, error) {
 	row := q.db.QueryRow(ctx, updateCustomerAddress,
+		arg.CountryCode,
 		arg.Label,
 		arg.AddressType,
 		arg.ContactName,

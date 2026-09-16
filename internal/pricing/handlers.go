@@ -58,6 +58,8 @@ type packageRequest struct {
 // QuoteRequest is the quote payload. Exported because the partner transport
 // (M32) accepts the same body on its own scope-gated endpoint.
 type QuoteRequest struct {
+	OriginCountry      string           `json:"originCountry,omitempty"`
+	DestinationCountry string           `json:"destinationCountry,omitempty"`
 	OriginPincode      string           `json:"originPincode"`
 	DestinationPincode string           `json:"destinationPincode"`
 	ServiceCode        string           `json:"serviceCode"`
@@ -115,8 +117,10 @@ func (h *Handler) QuoteFor(
 // names into the engine's input struct.
 func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req QuoteRequest) (*QuoteInput, error) {
 	v := validate.New()
-	originPin := v.Pincode("originPincode", req.OriginPincode)
-	destPin := v.Pincode("destinationPincode", req.DestinationPincode)
+	originCountry := v.CountryCode("originCountry", validate.AddressCountry(req.OriginCountry, p.OrganizationCountry), true)
+	destCountry := v.CountryCode("destinationCountry", validate.AddressCountry(req.DestinationCountry, p.OrganizationCountry), true)
+	originPin := v.PostalCode("originPincode", req.OriginPincode, originCountry)
+	destPin := v.PostalCode("destinationPincode", req.DestinationPincode, destCountry)
 	serviceCode := v.Code("serviceCode", req.ServiceCode)
 	paymentMode := v.Enum("paymentMode", req.PaymentMode, PaymentModes, true)
 	v.NonNegativeMinor("declaredValueMinor", req.DeclaredValueMinor)
@@ -155,11 +159,11 @@ func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req 
 		at = *req.At
 	}
 
-	origin, err := h.geo.RequireActivePincode(ctx, originPin, geography.DefaultCountry)
+	origin, err := h.geo.RequireActivePincode(ctx, originPin, originCountry)
 	if err != nil {
 		return nil, err
 	}
-	dest, err := h.geo.RequireActivePincode(ctx, destPin, geography.DefaultCountry)
+	dest, err := h.geo.RequireActivePincode(ctx, destPin, destCountry)
 	if err != nil {
 		return nil, err
 	}

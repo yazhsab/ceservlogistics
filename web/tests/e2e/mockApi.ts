@@ -2158,6 +2158,49 @@ export async function installMockApi(
         createdBy: 101,
         approvedBy: 202,
       });
+    if (path === "/api/v1/geography/countries")
+      return json(route, {
+        data: [
+          {
+            id: "country-ng",
+            iso2: "NG",
+            iso3: "NGA",
+            name: "Nigeria",
+            currency: "NGN",
+            phoneCode: "+234",
+          },
+          {
+            id: "country-gb",
+            iso2: "GB",
+            iso3: "GBR",
+            name: "United Kingdom",
+            currency: "GBP",
+            phoneCode: "+44",
+          },
+        ],
+      });
+    if (path === "/api/v1/shipments/preview")
+      return json(route, {
+        quote: {
+          currency: "NGN",
+          totalMinor: 10488,
+          lineItems: shipment.charges.lineItems,
+        },
+        serviceability: {
+          serviceable: true,
+          serviceName: "Express Air",
+          origin: { countryCode: "NG", pincode: "100001" },
+          destination: { countryCode: "NG", pincode: "900001" },
+        },
+        declaredValueMinor: 0,
+        commercial: {
+          insurance: { status: "NOT_REQUESTED" },
+          billing: {
+            transportation: { party: "SHIPPER" },
+            dutyTax: { party: "RECEIVER" },
+          },
+        },
+      });
     if (path === "/api/v1/shipments" && method === "GET")
       return json(route, {
         data: [

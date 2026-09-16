@@ -170,7 +170,8 @@ WHERE customer_id = sqlc.arg('customer_id') AND address_type = sqlc.arg('address
 
 -- name: UpdateCustomerAddress :one
 UPDATE customer_addresses
-SET label = COALESCE(sqlc.narg('label'), label),
+SET country_code = COALESCE(sqlc.narg('country_code'), country_code),
+ label = COALESCE(sqlc.narg('label'), label),
     address_type = COALESCE(sqlc.narg('address_type'), address_type),
     contact_name = COALESCE(sqlc.narg('contact_name'), contact_name),
     contact_phone = COALESCE(sqlc.narg('contact_phone'), contact_phone),

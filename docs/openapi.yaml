@@ -1388,6 +1388,7 @@ paths:
               type: object
               required: [pincode, zoneCode]
               properties:
+                countryCode: { type: string, pattern: "^[A-Z]{2}$" }
                 pincode: { $ref: "#/components/schemas/Pincode" }
                 zoneCode: { type: string }
                 isRemote:
@@ -1625,6 +1626,8 @@ paths:
               type: object
               required: [originPincode, destinationPincode, serviceCode]
               properties:
+                originCountry: { type: string, pattern: "^[A-Z]{2}$" }
+                destinationCountry: { type: string, pattern: "^[A-Z]{2}$" }
                 originPincode: { $ref: "#/components/schemas/Pincode" }
                 destinationPincode: { $ref: "#/components/schemas/Pincode" }
                 serviceCode: { type: string }
@@ -1662,6 +1665,8 @@ paths:
               type: object
               required: [originPincode, destinationPincode, serviceCode]
               properties:
+                originCountry: { type: string, pattern: "^[A-Z]{2}$" }
+                destinationCountry: { type: string, pattern: "^[A-Z]{2}$" }
                 originPincode: { $ref: "#/components/schemas/Pincode" }
                 destinationPincode: { $ref: "#/components/schemas/Pincode" }
                 serviceCode: { type: string }
@@ -1729,6 +1734,7 @@ paths:
               required: [operatingUnitId, pincode, areaType]
               properties:
                 operatingUnitId: { type: string }
+                countryCode: { type: string, pattern: "^[A-Z]{2}$" }
                 pincode: { $ref: "#/components/schemas/Pincode" }
                 areaType: { type: string, enum: [PICKUP, DELIVERY, BOTH] }
                 priority: { type: integer, minimum: 0, maximum: 1000, default: 100 }
@@ -2267,6 +2273,61 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   # ------------------------------------------------------------ Shipments --
+  /api/v1/partner/shipments/preview:
+    post:
+      tags: [Partner API]
+      summary: Preview booking, insurance and customs totals without allocating an AWB
+      description: Requires a partner API key with shipment:create scope. Resolves countries, customer scope, third-party accounts, route and price. Omit insuranceAcceptance until the customer has accepted this exact quote.
+      security: [{ partnerKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingRequest" }
+      responses:
+        "200":
+          description: Server-calculated booking preview.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingPreview" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /api/v1/shipments/preview:
+    post:
+      tags: [Shipments]
+      summary: Preview booking, insurance and customs totals without allocating an AWB
+      description: Requires shipment.create. Resolves countries, customer scope, third-party accounts, route and price. Omit insuranceAcceptance until the customer has accepted this exact quote.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingRequest" }
+      responses:
+        "200":
+          description: Server-calculated booking preview.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingPreview" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /api/v1/geography/countries:
+    get:
+      tags: [Geography]
+      summary: List active configured countries
+      description: Requires pincode.read. Availability in this list does not imply a serviceable route.
+      responses:
+        "200":
+          description: Configured countries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Country" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/shipments:
     get:
       tags: [Shipments]
@@ -6401,8 +6462,10 @@ paths:
               type: object
               required: [originPincode, destinationPincode, serviceCode]
               properties:
-                originPincode: { type: string, pattern: '^[1-9][0-9]{5}$' }
-                destinationPincode: { type: string, pattern: '^[1-9][0-9]{5}$' }
+                originCountry: { type: string, pattern: "^[A-Z]{2}$" }
+                destinationCountry: { type: string, pattern: "^[A-Z]{2}$" }
+                originPincode: { $ref: "#/components/schemas/Pincode" }
+                destinationPincode: { $ref: "#/components/schemas/Pincode" }
                 serviceCode: { type: string }
                 at: { type: string, format: date-time }
       responses:
@@ -9041,14 +9104,15 @@ components:
       examples: [1850]
     Pincode:
       type: string
-      pattern: "^[1-9][0-9]{5}$"
+      minLength: 3
+      maxLength: 12
+      pattern: "^[0-9A-Z][0-9A-Z -]{2,11}$"
       description: |
-        A six-digit postal code used as the current serviceability key. The
-        configured Nigerian and Indian datasets both use this wire shape;
-        always send `BookingAddress.countryCode` so the value is resolved in
-        the correct country. Lagos `100001` and Abuja `900001` are Nigerian
-        examples.
-      examples: ["100001", "900001"]
+        Postal identifier, never a number. Send its country at lookup, quote and
+        booking boundaries. NG/IN require six digits with a non-zero lead; GB
+        postcodes are normalized to uppercase with a space before the final
+        three characters. The postcode and route must exist in configured data.
+      examples: ["100001", "900001", "SS0 7JJ"]
     Code:
       type: string
       pattern: "^[A-Z0-9][A-Z0-9_-]{1,31}$"
@@ -9691,6 +9755,7 @@ components:
     LaneEndpoint:
       type: object
       properties:
+        countryCode: { type: string }
         pincode: { type: string }
         city: { type: string }
         state: { type: string }
@@ -9777,6 +9842,8 @@ components:
       type: object
       required: [originPincode, destinationPincode, serviceCode, paymentMode, packages]
       properties:
+        originCountry: { type: string, pattern: "^[A-Z]{2}$", description: Defaults to the organization country. }
+        destinationCountry: { type: string, pattern: "^[A-Z]{2}$", description: Defaults to the organization country. }
         originPincode: { $ref: "#/components/schemas/Pincode" }
         destinationPincode: { $ref: "#/components/schemas/Pincode" }
         serviceCode: { type: string }
@@ -9819,6 +9886,7 @@ components:
     Quote:
       type: object
       properties:
+        insurance: { $ref: "#/components/schemas/InsuranceQuote" }
         currency: { type: string }
         rateCardId: { type: string }
         rateCardCode: { type: string }
@@ -9937,6 +10005,7 @@ components:
         surchargeType:
           type: string
           enum: [FUEL, REMOTE_AREA, COD, INSURANCE, HANDLING, OVERSIZE, DOCUMENTATION, PACKAGING, APPOINTMENT, CUSTOM]
+          description: INSURANCE uses this versioned rule and applies only when insurance is requested; no implicit default rate is used.
         calcType: { type: string, enum: [FIXED, PERCENTAGE, PER_KG] }
         valueMinor:
           allOf: [{ $ref: "#/components/schemas/MinorAmount" }]
@@ -10030,6 +10099,7 @@ components:
     CustomerAddress:
       type: object
       properties:
+        countryCode: { type: string, pattern: "^[A-Z]{2}$" }
         id: { type: string }
         label: { type: string }
         addressType: { type: string, enum: [PICKUP, DELIVERY, BILLING, BOTH] }
@@ -10050,6 +10120,7 @@ components:
       type: object
       required: [label, addressType, contactName, contactPhone, line1, pincode]
       properties:
+        countryCode: { type: string, pattern: "^[A-Z]{2}$" }
         label: { type: string, maxLength: 80 }
         addressType: { type: string, enum: [PICKUP, DELIVERY, BILLING, BOTH] }
         contactName: { type: string }
@@ -10089,10 +10160,150 @@ components:
               createdAt: { type: string, format: date-time }
 
     # ---- shipments -------------------------------------------------------
+    Country:
+      type: object
+      required: [id, iso2, iso3, name, phoneCode, currency]
+      properties:
+        id: { type: string }
+        iso2: { type: string }
+        iso3: { type: string }
+        name: { type: string }
+        phoneCode: { type: string }
+        currency: { type: string }
+    InsuranceQuote:
+      type: object
+      required: [policyVersion, declaredValueMinor, premiumMinor, currency, quoteFingerprint]
+      properties:
+        policyVersion: { type: string, description: Rate-card version public ID for configured quotes; historical snapshots retain their original policy version. }
+        rateBp:
+          type: integer
+          description: Present only for one uncapped declared-value percentage rule. Otherwise consult rules and premiumMinor.
+        rules:
+          type: array
+          description: Exact applied insurance rules, in configured priority order. Historical quotes may omit this field.
+          items: { $ref: "#/components/schemas/InsuranceRuleQuote" }
+        declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        premiumMinor: { $ref: "#/components/schemas/MinorAmount" }
+        currency: { type: string }
+        quoteFingerprint: { type: string, pattern: "^[a-f0-9]{64}$" }
+    InsuranceRuleQuote:
+      type: object
+      required: [ruleId, code, name, calcType, appliesTo, isTaxable, basisMinor, premiumMinor, explanation]
+      properties:
+        ruleId: { type: string }
+        code: { type: string }
+        name: { type: string }
+        calcType: { type: string, enum: [FIXED, PERCENTAGE, PER_KG] }
+        appliesTo: { type: string, enum: [FREIGHT, FREIGHT_PLUS_SURCHARGES, DECLARED_VALUE, COD_AMOUNT] }
+        rateBp: { $ref: "#/components/schemas/BasisPoints" }
+        valueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        minAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
+        maxAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
+        isTaxable: { type: boolean }
+        basisMinor: { $ref: "#/components/schemas/MinorAmount" }
+        premiumMinor: { $ref: "#/components/schemas/MinorAmount" }
+        explanation: { type: string }
+    InsuranceAcceptance:
+      type: object
+      required: [accepted]
+      additionalProperties: false
+      description: |
+        Operator or authorized integration records the customer's decision.
+        Accepted insurance requires the fingerprint of the current server quote.
+        A changed quote returns INSURANCE_QUOTE_CHANGED; missing acceptance for an
+        insured booking returns INSURANCE_ACCEPTANCE_REQUIRED. No policy issuance
+        or insurer payment is implied. False records an explicit decline.
+      properties:
+        accepted: { type: boolean }
+        quoteFingerprint: { type: string }
+    InsuranceDecision:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [NOT_REQUESTED, AWAITING_ACCEPTANCE, ACCEPTED, DECLINED] }
+        quote: { $ref: "#/components/schemas/InsuranceQuote" }
+        recordedAt: { type: string, format: date-time }
+        recordedBy: { type: string }
+        actorType: { type: string }
+    BillingParty:
+      type: object
+      required: [party]
+      additionalProperties: false
+      properties:
+        party: { type: string, enum: [SHIPPER, RECEIVER, THIRD_PARTY] }
+        customerId:
+          type: string
+          description: Required for third party; optional for receiver (required for credit). Must be an active in-scope account in this tenant. Shipper uses the booking customer.
+    BillingInstructions:
+      type: object
+      required: [transportation, dutyTax]
+      additionalProperties: false
+      description: Transportation and duty/tax payers are independent. Omission defaults to shipper transportation and receiver duties. Duty/tax instructions do not assess or collect customs duties.
+      properties:
+        transportation: { $ref: "#/components/schemas/BillingParty" }
+        dutyTax: { $ref: "#/components/schemas/BillingParty" }
+    CustomsItem:
+      type: object
+      additionalProperties: false
+      required: [description, quantity, unitOfMeasure, unitValueMinor, countryOfOrigin]
+      properties:
+        description: { type: string, minLength: 2, maxLength: 500 }
+        quantity: { type: integer, minimum: 1, maximum: 1000000 }
+        unitOfMeasure: { type: string, minLength: 1, maxLength: 20 }
+        unitValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        countryOfOrigin: { type: string, pattern: "^[A-Z]{2}$" }
+        hsCode: { type: string, maxLength: 20 }
+    CustomsDeclaration:
+      type: object
+      additionalProperties: false
+      required: [reasonForExport, currency, items]
+      description: Customs values use the shipment currency. The server derives goods value after discount, the configured insurance premium and invoice total. Freight and other customs valuation charges do not override shipping rates. No FX conversion or customs filing is performed.
+      properties:
+        invoiceNumber: { type: string, maxLength: 80 }
+        declarationStatement: { type: string, maxLength: 2000 }
+        reasonForExport: { type: string, minLength: 2, maxLength: 100 }
+        termsOfSale: { type: string, maxLength: 100 }
+        currency: { type: string, enum: [NGN, INR, USD] }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/CustomsItem" }
+        discountMinor: { $ref: "#/components/schemas/MinorAmount" }
+        freightMinor: { $ref: "#/components/schemas/MinorAmount" }
+        otherChargesMinor: { $ref: "#/components/schemas/MinorAmount" }
+    CustomsSummary:
+      type: object
+      required: [declaration, lineTotalsMinor, goodsSubtotalMinor, declaredValueMinor, insuranceMinor, invoiceTotalMinor]
+      properties:
+        declaration: { $ref: "#/components/schemas/CustomsDeclaration" }
+        lineTotalsMinor: { type: array, items: { type: integer } }
+        goodsSubtotalMinor: { $ref: "#/components/schemas/MinorAmount" }
+        declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        insuranceMinor: { $ref: "#/components/schemas/MinorAmount" }
+        invoiceTotalMinor: { $ref: "#/components/schemas/MinorAmount" }
+    CommercialSnapshot:
+      type: object
+      required: [insurance, billing]
+      properties:
+        insurance: { $ref: "#/components/schemas/InsuranceDecision" }
+        customs: { $ref: "#/components/schemas/CustomsSummary" }
+        billing: { $ref: "#/components/schemas/BillingInstructions" }
+    BookingPreview:
+      type: object
+      required: [quote, serviceability, commercial, declaredValueMinor]
+      properties:
+        quote: { $ref: "#/components/schemas/Quote" }
+        serviceability: { $ref: "#/components/schemas/ServiceabilityResult" }
+        commercial: { $ref: "#/components/schemas/CommercialSnapshot" }
+        declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
     BookingRequest:
       type: object
       required: [customerId, serviceCode, paymentMode, sender, recipient, packages, contentDescription]
       properties:
+        insuranceAcceptance: { $ref: "#/components/schemas/InsuranceAcceptance" }
+        customs: { $ref: "#/components/schemas/CustomsDeclaration" }
+        billing: { $ref: "#/components/schemas/BillingInstructions" }
         customerId: { type: string }
         referenceNumber:
           type: string
@@ -10227,6 +10438,7 @@ components:
     Shipment:
       type: object
       properties:
+        commercial: { $ref: "#/components/schemas/CommercialSnapshot" }
         id: { type: string }
         awb:
           type: string

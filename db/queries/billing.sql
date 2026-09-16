@@ -215,16 +215,17 @@ SELECT s.id, s.public_id, s.awb, s.booked_at, s.chargeable_weight_grams,
        cs.line_items
 FROM shipments s
 JOIN shipment_charge_snapshots cs ON cs.shipment_id = s.id
+LEFT JOIN shipment_commercial_snapshots commercial ON commercial.shipment_id = s.id AND commercial.organization_id = s.organization_id
 LEFT JOIN invoice_shipments inv ON inv.shipment_id = s.id
-WHERE s.organization_id = $1
-  AND s.customer_id = $2
+WHERE s.organization_id = sqlc.arg('organization_id')
+  AND (CASE WHEN commercial.shipment_id IS NULL THEN s.customer_id ELSE commercial.transport_customer_id END) = sqlc.arg('customer_id')
   AND s.payment_mode IN ('CREDIT','PREPAID')
   AND s.current_status NOT IN ('CANCELLED')
   AND s.booked_at >= sqlc.arg('period_start')::timestamptz
   AND s.booked_at < sqlc.arg('period_end')::timestamptz
   AND inv.id IS NULL
 ORDER BY s.booked_at, s.id
-LIMIT $3
+LIMIT sqlc.arg('limit')
 FOR UPDATE OF s;
 
 -- name: AddInvoiceShipment :one

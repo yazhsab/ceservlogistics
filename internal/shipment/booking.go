@@ -3,6 +3,7 @@ package shipment
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/ceserve/courier-os/internal/platform/money"
 	"github.com/ceserve/courier-os/internal/platform/publicid"
 	"github.com/ceserve/courier-os/internal/platform/telemetry"
+	"github.com/ceserve/courier-os/internal/platform/validate"
 	"github.com/ceserve/courier-os/internal/pricing"
 	"github.com/ceserve/courier-os/internal/product"
 	"github.com/ceserve/courier-os/internal/serviceability"
@@ -61,22 +63,25 @@ type PackageInput struct {
 
 // BookingRequest is the booking payload.
 type BookingRequest struct {
-	CustomerID          string         `json:"customerId"`
-	ReferenceNumber     string         `json:"referenceNumber,omitempty"`
-	ServiceCode         string         `json:"serviceCode"`
-	PaymentMode         string         `json:"paymentMode"`
-	Sender              Address        `json:"sender"`
-	Recipient           Address        `json:"recipient"`
-	Packages            []PackageInput `json:"packages"`
-	DeclaredValueMinor  int64          `json:"declaredValueMinor,omitempty"`
-	CODAmountMinor      int64          `json:"codAmountMinor,omitempty"`
-	InsuranceRequired   bool           `json:"insuranceRequired,omitempty"`
-	ContentDescription  string         `json:"contentDescription"`
-	SpecialInstructions string         `json:"specialInstructions,omitempty"`
-	IsFragile           bool           `json:"isFragile,omitempty"`
-	IsDangerousGoods    bool           `json:"isDangerousGoods,omitempty"`
-	BookingUnitID       string         `json:"bookingUnitId,omitempty"`
-	Metadata            map[string]any `json:"metadata,omitempty"`
+	InsuranceAcceptance *InsuranceAcceptance `json:"insuranceAcceptance,omitempty"`
+	Customs             *CustomsDeclaration  `json:"customs,omitempty"`
+	Billing             *BillingInstructions `json:"billing,omitempty"`
+	CustomerID          string               `json:"customerId"`
+	ReferenceNumber     string               `json:"referenceNumber,omitempty"`
+	ServiceCode         string               `json:"serviceCode"`
+	PaymentMode         string               `json:"paymentMode"`
+	Sender              Address              `json:"sender"`
+	Recipient           Address              `json:"recipient"`
+	Packages            []PackageInput       `json:"packages"`
+	DeclaredValueMinor  int64                `json:"declaredValueMinor,omitempty"`
+	CODAmountMinor      int64                `json:"codAmountMinor,omitempty"`
+	InsuranceRequired   bool                 `json:"insuranceRequired,omitempty"`
+	ContentDescription  string               `json:"contentDescription"`
+	SpecialInstructions string               `json:"specialInstructions,omitempty"`
+	IsFragile           bool                 `json:"isFragile,omitempty"`
+	IsDangerousGoods    bool                 `json:"isDangerousGoods,omitempty"`
+	BookingUnitID       string               `json:"bookingUnitId,omitempty"`
+	Metadata            map[string]any       `json:"metadata,omitempty"`
 }
 
 // Booker executes the booking transaction.
@@ -137,10 +142,12 @@ type prepared struct {
 
 	awb string
 
-	customer *customer.Resolved
-	service  *dbgen.CourierService
-	routing  *serviceability.Result
-	quote    *pricing.Quote
+	customer        *customer.Resolved
+	service         *dbgen.CourierService
+	routing         *serviceability.Result
+	quote           *pricing.Quote
+	commercial      *CommercialSnapshot
+	billingCustomer *customer.Resolved
 
 	originPincode *geography.Pincode
 	destPincode   *geography.Pincode
@@ -157,6 +164,9 @@ type prepared struct {
 func (b *Booker) Prepare(ctx context.Context, p *tenant.Principal, req BookingRequest) (*Prepared, error) {
 	prep, err := b.prepare(ctx, p, req)
 	if err != nil {
+		return nil, err
+	}
+	if err := acceptInsurance(prep); err != nil {
 		return nil, err
 	}
 	// AWB allocation is a single atomic statement on its own connection, so the
@@ -215,12 +225,15 @@ func (b *Booker) Commit(ctx context.Context, tx pgx.Tx, prepared *Prepared) (*De
 	if err := b.writeRouteSnapshot(ctx, q, prep, created); err != nil {
 		return nil, err
 	}
+	if err := writeCommercial(ctx, q, prep, created); err != nil {
+		return nil, err
+	}
 
 	// Credit is reserved inside the transaction and after the shipment row
 	// exists, so the ledger entry can reference the shipment and a credit
 	// failure rolls the whole booking back.
 	if prep.request.PaymentMode == "CREDIT" {
-		if err := b.customer.ReserveCredit(ctx, tx, p.OrganizationID, prep.customer.Customer.ID,
+		if err := b.customer.ReserveCredit(ctx, tx, p.OrganizationID, prep.billingCustomer.Customer.ID,
 			prep.quote.TotalMinor, &created.ID, p.ActorUserID(), httpx.RequestID(ctx)); err != nil {
 			return nil, err
 		}
@@ -263,6 +276,9 @@ func (b *Booker) Commit(ctx context.Context, tx pgx.Tx, prepared *Prepared) (*De
 			"chargeableWeightGrams": created.ChargeableWeightGrams,
 			"rateCardVersion":       prep.quote.RateCardVersionID,
 			"routeCode":             prep.routing.RouteCode,
+			"insuranceDecision":     prep.commercial.Insurance,
+			"billing":               prep.commercial.Billing,
+			"customsIncluded":       prep.commercial.Customs != nil,
 		},
 	})); err != nil {
 		return nil, apierr.Internal(fmt.Errorf("record booking audit: %w", err))
@@ -280,6 +296,9 @@ func (b *Booker) Commit(ctx context.Context, tx pgx.Tx, prepared *Prepared) (*De
 
 // prepare performs every validation and resolution step.
 func (b *Booker) prepare(ctx context.Context, p *tenant.Principal, req BookingRequest) (*prepared, error) {
+	if err := ValidateBooking(&req, b.maxPackages); err != nil {
+		return nil, err
+	}
 	at := time.Now()
 	prep := &prepared{principal: p, request: req, at: at}
 
@@ -364,7 +383,8 @@ func (b *Booker) prepare(ctx context.Context, p *tenant.Principal, req BookingRe
 		CustomerID:     &cust.Customer.ID,
 		FranchiseID:    cust.FranchiseID,
 		Service:        svc,
-		OriginZoneID:   route.OriginZoneID(), OriginZoneCode: route.Origin.ZoneCode,
+		OriginStateID:  origin.StateID, DestStateID: dest.StateID,
+		OriginZoneID: route.OriginZoneID(), OriginZoneCode: route.Origin.ZoneCode,
 		DestZoneID: route.DestinationZoneID(), DestZoneCode: route.Destination.ZoneCode,
 		Packages:           prep.packages,
 		PaymentMode:        req.PaymentMode,
@@ -381,9 +401,12 @@ func (b *Booker) prepare(ctx context.Context, p *tenant.Principal, req BookingRe
 		return nil, err
 	}
 	prep.quote = quote
+	if err := b.prepareCommercial(ctx, prep); err != nil {
+		return nil, err
+	}
 
 	// 9. Payment-mode policy that does not need the transaction.
-	if req.PaymentMode == "CREDIT" && cust.CreditProfile == nil {
+	if req.PaymentMode == "CREDIT" && (prep.billingCustomer == nil || prep.billingCustomer.CreditProfile == nil) {
 		return nil, apierr.Conflict(apierr.CodeConflict,
 			"This customer has no credit profile. Set a credit limit before booking on credit terms.")
 	}
@@ -426,7 +449,17 @@ func (b *Booker) resolveAddress(
 		country = geography.DefaultCountry
 	}
 	addr.CountryCode = country
-	return b.geo.RequireActivePincode(ctx, addr.Pincode, country)
+	v := validate.New()
+	addr.Pincode = v.PostalCode(role+".pincode", addr.Pincode, country)
+	if err := v.Err(); err != nil {
+		return nil, err
+	}
+	pin, err := b.geo.RequireActivePincode(ctx, addr.Pincode, country)
+	var apiError *apierr.Error
+	if errors.As(err, &apiError) && apiError.Code == apierr.CodeNotFound {
+		return nil, apierr.Validation("The postal code is not configured for the selected country.", map[string]any{"field": role + ".pincode", "countryCode": country})
+	}
+	return pin, err
 }
 
 func fillFromSaved(addr *Address, saved dbgen.CustomerAddress) {

@@ -34,6 +34,8 @@ import {
   type ShipmentEvent,
   type ShipmentListResponse,
 } from "../api/client";
+import { CommercialSummary } from "./BookingCommercialFields";
+import { insuranceRateLabel } from "../lib/insurance";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../components/ToastProvider";
 import {
@@ -487,7 +489,7 @@ function Overview({ shipment }: { shipment: Shipment }) {
               [
                 shipment.isFragile ? "Fragile" : "",
                 shipment.isDangerousGoods ? "Dangerous goods" : "",
-                shipment.insuranceRequired ? "Insured" : "",
+                shipment.insuranceRequired ? "Insurance requested" : "",
               ]
                 .filter(Boolean)
                 .join(", ") || "Standard"
@@ -515,6 +517,185 @@ function Overview({ shipment }: { shipment: Shipment }) {
           </div>
         </div>
       </Panel>
+      {shipment.commercial ? (
+        <Panel className="xl:col-span-2">
+          <PanelHeader
+            title="Insurance, billing & customs"
+            description="Recorded at booking. These values preserve the customer's instructions."
+          />
+          <div className="space-y-4 p-4">
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  Insurance decision
+                </dt>
+                <dd className="mt-1 text-sm font-semibold">
+                  {titleCase(shipment.commercial.insurance.status)}
+                </dd>
+              </div>
+              {shipment.commercial.insurance.quote ? (
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Accepted premium
+                    {insuranceRateLabel(shipment.commercial.insurance.quote)
+                      ? ` · ${insuranceRateLabel(shipment.commercial.insurance.quote)} of declared value`
+                      : ""}
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold">
+                    {formatMoney(
+                      shipment.commercial.insurance.quote.premiumMinor,
+                      shipment.commercial.insurance.quote.currency,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              {shipment.commercial.insurance.recordedAt ? (
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Decision recorded
+                  </dt>
+                  <dd className="mt-1 text-sm">
+                    {formatDateTime(shipment.commercial.insurance.recordedAt)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            <CommercialSummary
+              commercial={shipment.commercial}
+              currency={shipment.currency}
+            />
+            {shipment.commercial.insurance.quote?.rules?.length ? (
+              <ul className="space-y-1 text-xs text-muted-foreground">
+                {shipment.commercial.insurance.quote.rules.map((rule) => (
+                  <li key={rule.ruleId}>
+                    <strong>{rule.name}:</strong> {rule.explanation}
+                    {rule.isTaxable ? " · Taxable" : " · Tax exempt"}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {(["transportation", "dutyTax"] as const).map((kind) =>
+              shipment.commercial?.billing[kind].customerId ? (
+                <p className="text-xs" key={kind}>
+                  {kind === "transportation"
+                    ? "Transportation"
+                    : "Duty and tax"}{" "}
+                  account:{" "}
+                  <Link
+                    className="font-medium text-primary underline"
+                    to={`/customers/${shipment.commercial.billing[kind].customerId}`}
+                  >
+                    {shipment.commercial.billing[kind].customerId}
+                  </Link>
+                </p>
+              ) : null,
+            )}
+            {shipment.commercial.customs ? (
+              <>
+                <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Customs invoice
+                    </dt>
+                    <dd>
+                      {shipment.commercial.customs.declaration.invoiceNumber ||
+                        "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Reason for export
+                    </dt>
+                    <dd>
+                      {shipment.commercial.customs.declaration.reasonForExport}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">
+                      Terms of sale
+                    </dt>
+                    <dd>
+                      {shipment.commercial.customs.declaration.termsOfSale ||
+                        "—"}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <caption className="sr-only">
+                      Customs declaration goods
+                    </caption>
+                    <thead>
+                      <tr>
+                        {[
+                          "Description of goods",
+                          "Quantity",
+                          "Unit value",
+                          "Origin",
+                          "HS code",
+                          "Line total",
+                        ].map((label) => (
+                          <th
+                            key={label}
+                            className="whitespace-nowrap border-b px-3 py-2 font-medium"
+                          >
+                            {label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shipment.commercial.customs.declaration.items.map(
+                        (item, index) => (
+                          <tr key={index}>
+                            <td className="min-w-40 border-b px-3 py-2">
+                              {item.description}
+                            </td>
+                            <td className="whitespace-nowrap border-b px-3 py-2">
+                              {item.quantity} {item.unitOfMeasure}
+                            </td>
+                            <td className="whitespace-nowrap border-b px-3 py-2">
+                              {formatMoney(
+                                item.unitValueMinor,
+                                shipment.commercial?.customs?.declaration
+                                  .currency,
+                              )}
+                            </td>
+                            <td className="border-b px-3 py-2">
+                              {item.countryOfOrigin}
+                            </td>
+                            <td className="border-b px-3 py-2">
+                              {item.hsCode || "—"}
+                            </td>
+                            <td className="whitespace-nowrap border-b px-3 py-2">
+                              {formatMoney(
+                                shipment.commercial?.customs?.lineTotalsMinor[
+                                  index
+                                ],
+                                shipment.commercial?.customs?.declaration
+                                  .currency,
+                              )}
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {shipment.commercial.customs.declaration
+                  .declarationStatement ? (
+                  <p className="whitespace-pre-wrap text-sm">
+                    {
+                      shipment.commercial.customs.declaration
+                        .declarationStatement
+                    }
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </Panel>
+      ) : null}
       {shipment.status === "CANCELLED" ? (
         <Panel className="xl:col-span-2">
           <div className="flex items-start gap-3 p-4">

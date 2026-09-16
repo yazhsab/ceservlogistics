@@ -316,6 +316,7 @@ func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) error {
 			"calcType": s.CalcType, "valueMinor": s.ValueMinor, "percentageBp": s.PercentageBp,
 			"appliesTo": s.AppliesTo, "priority": s.Priority, "isTaxable": s.IsTaxable,
 			"serviceCode": s.ServiceCode, "conditions": decodeJSON(s.Conditions),
+			"minAmountMinor": s.MinAmountMinor, "maxAmountMinor": s.MaxAmountMinor,
 		})
 	}
 	return httpx.OK(w, map[string]any{
@@ -522,6 +523,15 @@ func (h *Handler) createSurcharge(w http.ResponseWriter, r *http.Request) error 
 	code := v.Code("code", req.Code)
 	name := v.Text("name", req.Name, 2, 120, true)
 	surchargeType := v.Enum("surchargeType", req.SurchargeType, surchargeTypes, true)
+	if surchargeType == "INSURANCE" {
+		if req.Conditions == nil {
+			req.Conditions = map[string]any{}
+		}
+		if value, ok := req.Conditions["requiresInsurance"]; ok && value != true {
+			v.Add("conditions.requiresInsurance", "Insurance surcharges apply only when insurance is requested.")
+		}
+		req.Conditions["requiresInsurance"] = true
+	}
 	calcType := v.Enum("calcType", req.CalcType, surchargeCalc, true)
 	appliesTo := "FREIGHT"
 	if req.AppliesTo != "" {
@@ -551,6 +561,15 @@ func (h *Handler) createSurcharge(w http.ResponseWriter, r *http.Request) error 
 		req.Priority = 100
 	}
 	v.IntRange("priority", req.Priority, 0, 1000)
+	if req.MinAmountMinor != nil {
+		v.NonNegativeMinor("minAmountMinor", *req.MinAmountMinor)
+	}
+	if req.MaxAmountMinor != nil {
+		v.NonNegativeMinor("maxAmountMinor", *req.MaxAmountMinor)
+	}
+	if req.MinAmountMinor != nil && req.MaxAmountMinor != nil && *req.MinAmountMinor > *req.MaxAmountMinor {
+		v.Add("maxAmountMinor", "Maximum cannot be lower than minimum.")
+	}
 	if err := v.Err(); err != nil {
 		return err
 	}

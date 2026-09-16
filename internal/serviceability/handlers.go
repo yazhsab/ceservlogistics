@@ -78,6 +78,8 @@ func (h *Handler) RouteRoutes(r chi.Router) {
 // ---- lookup ----------------------------------------------------------------
 
 type checkRequest struct {
+	OriginCountry      string     `json:"originCountry,omitempty"`
+	DestinationCountry string     `json:"destinationCountry,omitempty"`
 	OriginPincode      string     `json:"originPincode"`
 	DestinationPincode string     `json:"destinationPincode"`
 	ServiceCode        string     `json:"serviceCode"`
@@ -98,6 +100,8 @@ func (h *Handler) checkQuery(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return h.runCheck(w, r, checkRequest{
+		OriginCountry:      httpx.Query(r, "originCountry"),
+		DestinationCountry: httpx.Query(r, "destinationCountry"),
 		OriginPincode:      httpx.Query(r, "originPincode"),
 		DestinationPincode: httpx.Query(r, "destinationPincode"),
 		ServiceCode:        httpx.Query(r, "serviceCode"),
@@ -119,8 +123,10 @@ func (h *Handler) runCheck(w http.ResponseWriter, r *http.Request, req checkRequ
 		return err
 	}
 	v := validate.New()
-	origin := v.Pincode("originPincode", req.OriginPincode)
-	dest := v.Pincode("destinationPincode", req.DestinationPincode)
+	originCountry := v.CountryCode("originCountry", validate.AddressCountry(req.OriginCountry, p.OrganizationCountry), true)
+	destCountry := v.CountryCode("destinationCountry", validate.AddressCountry(req.DestinationCountry, p.OrganizationCountry), true)
+	origin := v.PostalCode("originPincode", req.OriginPincode, originCountry)
+	dest := v.PostalCode("destinationPincode", req.DestinationPincode, destCountry)
 	service := v.Code("serviceCode", req.ServiceCode)
 	if err := v.Err(); err != nil {
 		return err
@@ -132,6 +138,7 @@ func (h *Handler) runCheck(w http.ResponseWriter, r *http.Request, req checkRequ
 	res, err := h.resolver.Resolve(r.Context(), Request{
 		OrganizationID: p.OrganizationID,
 		OriginPincode:  origin, DestPincode: dest, ServiceCode: service,
+		OriginCountry: originCountry, DestCountry: destCountry,
 		At: at, IncludeExplain: explain,
 	})
 	if err != nil {
@@ -157,6 +164,7 @@ func (h *Handler) getExplanation(w http.ResponseWriter, r *http.Request) error {
 var areaTypes = []string{"PICKUP", "DELIVERY", "BOTH"}
 
 type createServiceAreaRequest struct {
+	CountryCode     string     `json:"countryCode,omitempty"`
 	OperatingUnitID string     `json:"operatingUnitId"`
 	Pincode         string     `json:"pincode"`
 	AreaType        string     `json:"areaType"`
@@ -241,7 +249,8 @@ func (h *Handler) createServiceArea(w http.ResponseWriter, r *http.Request) erro
 	}
 	v := validate.New()
 	unitPublicID := v.PublicID("operatingUnitId", req.OperatingUnitID, publicid.PrefixOperatingUnit, true)
-	pin := v.Pincode("pincode", req.Pincode)
+	country := v.CountryCode("countryCode", validate.AddressCountry(req.CountryCode, p.OrganizationCountry), true)
+	pin := v.PostalCode("pincode", req.Pincode, country)
 	areaType := v.Enum("areaType", req.AreaType, areaTypes, true)
 	if req.Priority == 0 {
 		req.Priority = 100
@@ -260,7 +269,7 @@ func (h *Handler) createServiceArea(w http.ResponseWriter, r *http.Request) erro
 		}
 		return apierr.Internal(err)
 	}
-	pincode, err := h.geo.LookupPincode(r.Context(), pin, geography.DefaultCountry)
+	pincode, err := h.geo.LookupPincode(r.Context(), pin, country)
 	if err != nil {
 		return err
 	}

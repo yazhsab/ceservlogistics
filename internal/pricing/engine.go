@@ -27,7 +27,7 @@ import (
 
 // EngineVersion is stamped on every snapshot. Bump it whenever the calculation
 // changes so historical snapshots remain interpretable.
-const EngineVersion = "1.0.0"
+const EngineVersion = "1.2.0"
 
 // Line-item kinds, in the order they appear in a breakdown.
 const (
@@ -127,7 +127,8 @@ type Quote struct {
 	RoundingMinor       int64 `json:"roundingMinor"`
 	TotalMinor          int64 `json:"totalMinor"`
 
-	LineItems []LineItem `json:"lineItems"`
+	LineItems []LineItem      `json:"lineItems"`
+	Insurance *InsuranceQuote `json:"insurance,omitempty"`
 
 	// internal identifiers for the booking snapshot
 	rateCardDBID        int64
@@ -173,6 +174,10 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	}
 	if len(in.Packages) == 0 {
 		return nil, apierr.Validation("At least one package is required to price a shipment.", nil)
+	}
+
+	if err := validateInsuranceRequest(in); err != nil {
+		return nil, err
 	}
 
 	// 1. Rate card.
@@ -221,15 +226,22 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	quote.LineItems = append(quote.LineItems, freightItem)
 
 	// 4. Surcharges.
-	surchargeTaxable, surchargeExempt, surchargeItems, err := e.computeSurcharges(ctx, in, card.VersionID, freight, quote.Weight.ChargeableGrams)
+	surchargeTaxable, surchargeExempt, surchargeItems, offer, err := e.computeSurcharges(ctx, in, card.VersionID, freight, quote.Weight.ChargeableGrams)
 	if err != nil {
 		return nil, err
+	}
+	// The offer is a projection of applied rate-card rules, not an extra fee.
+	quote.Insurance = offer
+	discountableSurcharges := surchargeTaxable + surchargeExempt
+	if offer != nil {
+		offer.PolicyVersion = card.VersionPublicID
+		discountableSurcharges -= offer.PremiumMinor
 	}
 	quote.LineItems = append(quote.LineItems, surchargeItems...)
 	quote.SurchargeTotalMinor = surchargeTaxable + surchargeExempt
 
 	// 5. Discounts.
-	discount, discountItems, err := e.computeDiscounts(ctx, in, card.VersionID, freight, surchargeTaxable+surchargeExempt)
+	discount, discountItems, err := e.computeDiscounts(ctx, in, card.VersionID, freight, discountableSurcharges)
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +273,7 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	if quote.TotalMinor < 0 {
 		quote.TotalMinor = 0
 	}
+	fingerprintInsurance(quote, in)
 	return quote, nil
 }
 
@@ -458,31 +471,43 @@ func (e *Engine) computeFreight(
 // FREIGHT_PLUS_SURCHARGES sees a running total that is itself deterministic.
 func (e *Engine) computeSurcharges(
 	ctx context.Context, in QuoteInput, versionID, freight int64, chargeable int32,
-) (taxable, exempt int64, items []LineItem, err error) {
+) (taxable, exempt int64, items []LineItem, insurance *InsuranceQuote, err error) {
 	rules, err := e.q.ListSurchargeRulesForVersion(ctx, dbgen.ListSurchargeRulesForVersionParams{
 		RateCardVersionID: versionID, CourierServiceID: &in.Service.ID,
 	})
 	if err != nil {
-		return 0, 0, nil, apierr.Internal(fmt.Errorf("list surcharge rules: %w", err))
+		return 0, 0, nil, nil, apierr.Internal(fmt.Errorf("list surcharge rules: %w", err))
 	}
 	running := freight
+	if in.InsuranceRequired {
+		insurance = &InsuranceQuote{DeclaredValueMinor: in.DeclaredValueMinor, Currency: string(in.Currency)}
+	}
 	for _, rule := range rules {
+		// A missing historical requiresInsurance condition must never charge
+		// an uninsured shipment. Remaining configured conditions still apply.
+		if rule.SurchargeType == "INSURANCE" && !in.InsuranceRequired {
+			continue
+		}
 		if !matchesConditions(rule.Conditions, in, chargeable) {
 			continue
 		}
 		basis := surchargeBasis(rule.AppliesTo, freight, running, in)
 		amount, rate := applyCalc(rule.CalcType, rule.ValueMinor, rule.PercentageBp, basis, chargeable)
 		amount = money.Clamp(amount, rule.MinAmountMinor, rule.MaxAmountMinor)
-		if amount == 0 {
+		explanation := fmt.Sprintf("%s on %s of %s = %s", rate, humaniseBasis(rule.AppliesTo), formatMinor(basis, in.Currency), formatMinor(amount, in.Currency))
+		if rule.MinAmountMinor != nil {
+			explanation += "; minimum " + formatMinor(*rule.MinAmountMinor, in.Currency)
+		}
+		if rule.MaxAmountMinor != nil {
+			explanation += "; maximum " + formatMinor(*rule.MaxAmountMinor, in.Currency)
+		}
+		if rule.SurchargeType == "INSURANCE" {
+			insurance.addRule(rule, basis, amount, explanation)
+		}
+		if amount == 0 && rule.SurchargeType != "INSURANCE" {
 			continue
 		}
-		items = append(items, LineItem{
-			Kind: KindSurcharge, Code: rule.Code, Label: rule.Name,
-			AmountMinor: amount, BasisMinor: basis, Rate: rate, RuleID: rule.PublicID,
-			Explanation: fmt.Sprintf("%s on %s of %s = %s",
-				rate, humaniseBasis(rule.AppliesTo), formatMinor(basis, in.Currency),
-				formatMinor(amount, in.Currency)),
-		})
+		items = append(items, LineItem{Kind: KindSurcharge, Code: rule.Code, Label: rule.Name, AmountMinor: amount, BasisMinor: basis, Rate: rate, RuleID: rule.PublicID, Explanation: explanation})
 		running += amount
 		if rule.IsTaxable {
 			taxable += amount
@@ -490,7 +515,10 @@ func (e *Engine) computeSurcharges(
 			exempt += amount
 		}
 	}
-	return taxable, exempt, items, nil
+	if insurance != nil && len(insurance.Rules) == 0 {
+		return 0, 0, nil, nil, apierr.Conflict("INSURANCE_RATE_NOT_CONFIGURED", "No insurance rate applies to this shipment. Configure an INSURANCE surcharge on the applicable rate-card version before requesting insurance.")
+	}
+	return taxable, exempt, items, insurance, nil
 }
 
 // computeDiscounts applies discount rules.

@@ -146,12 +146,13 @@ type Result struct {
 
 // LocationInfo describes one end of a lane.
 type LocationInfo struct {
-	Pincode  string `json:"pincode"`
-	City     string `json:"city,omitempty"`
-	State    string `json:"state,omitempty"`
-	ZoneCode string `json:"zoneCode,omitempty"`
-	ZoneName string `json:"zoneName,omitempty"`
-	IsRemote bool   `json:"isRemote"`
+	CountryCode string `json:"countryCode"`
+	Pincode     string `json:"pincode"`
+	City        string `json:"city,omitempty"`
+	State       string `json:"state,omitempty"`
+	ZoneCode    string `json:"zoneCode,omitempty"`
+	ZoneName    string `json:"zoneName,omitempty"`
+	IsRemote    bool   `json:"isRemote"`
 }
 
 // Explanation is the decision trace: every step, every candidate, and why the
@@ -255,8 +256,8 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (*Result, error) {
 	}
 	res.originPincodeID, res.destPincodeID = origin.ID, dest.ID
 	res.originStateID, res.destStateID = origin.StateID, dest.StateID
-	res.Origin = LocationInfo{Pincode: origin.Code, City: origin.CityName, State: origin.StateName, IsRemote: origin.IsRemote}
-	res.Destination = LocationInfo{Pincode: dest.Code, City: dest.CityName, State: dest.StateName, IsRemote: dest.IsRemote}
+	res.Origin = LocationInfo{CountryCode: origin.CountryCode, Pincode: origin.Code, City: origin.CityName, State: origin.StateName, IsRemote: origin.IsRemote}
+	res.Destination = LocationInfo{CountryCode: dest.CountryCode, Pincode: dest.Code, City: dest.CityName, State: dest.StateName, IsRemote: dest.IsRemote}
 	explanation.Steps = append(explanation.Steps, ExplainStep{
 		Step: "resolve_pincodes", Outcome: "ok",
 		Detail: fmt.Sprintf("%s (%s) -> %s (%s)", origin.Code, origin.StateName, dest.Code, dest.StateName),

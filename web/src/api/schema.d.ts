@@ -2005,6 +2005,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
+            countryCode?: string;
             pincode: components["schemas"]["Pincode"];
             zoneCode: string;
             /** @description Overrides the platform default for this tenant. */
@@ -2423,6 +2424,8 @@ export interface paths {
            *     }
            */
           "application/json": {
+            originCountry?: string;
+            destinationCountry?: string;
             originPincode: components["schemas"]["Pincode"];
             destinationPincode: components["schemas"]["Pincode"];
             serviceCode: string;
@@ -2481,6 +2484,8 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
+            originCountry?: string;
+            destinationCountry?: string;
             originPincode: components["schemas"]["Pincode"];
             destinationPincode: components["schemas"]["Pincode"];
             serviceCode: string;
@@ -2604,6 +2609,7 @@ export interface paths {
         content: {
           "application/json": {
             operatingUnitId: string;
+            countryCode?: string;
             pincode: components["schemas"]["Pincode"];
             /** @enum {string} */
             areaType: "PICKUP" | "DELIVERY" | "BOTH";
@@ -3662,6 +3668,138 @@ export interface paths {
         422: components["responses"]["ValidationFailed"];
       };
     };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/partner/shipments/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview booking, insurance and customs totals without allocating an AWB
+     * @description Requires a partner API key with shipment:create scope. Resolves countries, customer scope, third-party accounts, route and price. Omit insuranceAcceptance until the customer has accepted this exact quote.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["BookingRequest"];
+        };
+      };
+      responses: {
+        /** @description Server-calculated booking preview. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["BookingPreview"];
+          };
+        };
+        403: components["responses"]["Forbidden"];
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/shipments/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview booking, insurance and customs totals without allocating an AWB
+     * @description Requires shipment.create. Resolves countries, customer scope, third-party accounts, route and price. Omit insuranceAcceptance until the customer has accepted this exact quote.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["BookingRequest"];
+        };
+      };
+      responses: {
+        /** @description Server-calculated booking preview. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["BookingPreview"];
+          };
+        };
+        403: components["responses"]["Forbidden"];
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/geography/countries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List active configured countries
+     * @description Requires pincode.read. Availability in this list does not imply a serviceable route.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Configured countries. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data: components["schemas"]["Country"][];
+            };
+          };
+        };
+        403: components["responses"]["Forbidden"];
+      };
+    };
+    put?: never;
     post?: never;
     delete?: never;
     options?: never;
@@ -8657,13 +8795,13 @@ export interface components {
      */
     BasisPoints: number;
     /**
-     * @description A six-digit postal code used as the current serviceability key. The
-     *     configured Nigerian and Indian datasets both use this wire shape;
-     *     always send `BookingAddress.countryCode` so the value is resolved in
-     *     the correct country. Lagos `100001` and Abuja `900001` are Nigerian
-     *     examples.
+     * @description Postal identifier, never a number. Send its country at lookup, quote and
+     *     booking boundaries. NG/IN require six digits with a non-zero lead; GB
+     *     postcodes are normalized to uppercase with a space before the final
+     *     three characters. The postcode and route must exist in configured data.
      * @example 100001
      * @example 900001
+     * @example SS0 7JJ
      */
     Pincode: string;
     /**
@@ -9302,6 +9440,7 @@ export interface components {
       explanation?: components["schemas"]["RoutingExplanation"];
     };
     LaneEndpoint: {
+      countryCode?: string;
       pincode?: string;
       city?: string;
       state?: string;
@@ -9391,6 +9530,10 @@ export interface components {
      *     }
      */
     QuoteRequest: {
+      /** @description Defaults to the organization country. */
+      originCountry?: string;
+      /** @description Defaults to the organization country. */
+      destinationCountry?: string;
       originPincode: components["schemas"]["Pincode"];
       destinationPincode: components["schemas"]["Pincode"];
       serviceCode: string;
@@ -9468,6 +9611,7 @@ export interface components {
      *     }
      */
     Quote: {
+      insurance?: components["schemas"]["InsuranceQuote"];
       currency?: string;
       rateCardId?: string;
       rateCardCode?: string;
@@ -9546,7 +9690,10 @@ export interface components {
     CreateSurchargeRequest: {
       code: components["schemas"]["Code"];
       name: string;
-      /** @enum {string} */
+      /**
+       * @description INSURANCE uses this versioned rule and applies only when insurance is requested; no implicit default rate is used.
+       * @enum {string}
+       */
       surchargeType:
         | "FUEL"
         | "REMOTE_AREA"
@@ -9649,6 +9796,7 @@ export interface components {
       };
     };
     CustomerAddress: {
+      countryCode?: string;
       id?: string;
       label?: string;
       /** @enum {string} */
@@ -9669,6 +9817,7 @@ export interface components {
       status?: "ACTIVE" | "INACTIVE";
     };
     CreateAddressRequest: {
+      countryCode?: string;
       label: string;
       /** @enum {string} */
       addressType: "PICKUP" | "DELIVERY" | "BILLING" | "BOTH";
@@ -9706,6 +9855,115 @@ export interface components {
         /** Format: date-time */
         createdAt?: string;
       }[];
+    };
+    Country: {
+      id: string;
+      iso2: string;
+      iso3: string;
+      name: string;
+      phoneCode: string;
+      currency: string;
+    };
+    InsuranceQuote: {
+      /** @description Rate-card version public ID for configured quotes; historical snapshots retain their original policy version. */
+      policyVersion: string;
+      /** @description Present only for one uncapped declared-value percentage rule. Otherwise consult rules and premiumMinor. */
+      rateBp?: number;
+      /** @description Exact applied insurance rules, in configured priority order. Historical quotes may omit this field. */
+      rules?: components["schemas"]["InsuranceRuleQuote"][];
+      declaredValueMinor: components["schemas"]["MinorAmount"];
+      premiumMinor: components["schemas"]["MinorAmount"];
+      currency: string;
+      quoteFingerprint: string;
+    };
+    InsuranceRuleQuote: {
+      ruleId: string;
+      code: string;
+      name: string;
+      /** @enum {string} */
+      calcType: "FIXED" | "PERCENTAGE" | "PER_KG";
+      /** @enum {string} */
+      appliesTo:
+        "FREIGHT" | "FREIGHT_PLUS_SURCHARGES" | "DECLARED_VALUE" | "COD_AMOUNT";
+      rateBp?: components["schemas"]["BasisPoints"];
+      valueMinor?: components["schemas"]["MinorAmount"];
+      minAmountMinor?: components["schemas"]["MinorAmount"];
+      maxAmountMinor?: components["schemas"]["MinorAmount"];
+      isTaxable: boolean;
+      basisMinor: components["schemas"]["MinorAmount"];
+      premiumMinor: components["schemas"]["MinorAmount"];
+      explanation: string;
+    };
+    /**
+     * @description Operator or authorized integration records the customer's decision.
+     *     Accepted insurance requires the fingerprint of the current server quote.
+     *     A changed quote returns INSURANCE_QUOTE_CHANGED; missing acceptance for an
+     *     insured booking returns INSURANCE_ACCEPTANCE_REQUIRED. No policy issuance
+     *     or insurer payment is implied. False records an explicit decline.
+     */
+    InsuranceAcceptance: {
+      accepted: boolean;
+      quoteFingerprint?: string;
+    };
+    InsuranceDecision: {
+      /** @enum {string} */
+      status: "NOT_REQUESTED" | "AWAITING_ACCEPTANCE" | "ACCEPTED" | "DECLINED";
+      quote?: components["schemas"]["InsuranceQuote"];
+      /** Format: date-time */
+      recordedAt?: string;
+      recordedBy?: string;
+      actorType?: string;
+    };
+    BillingParty: {
+      /** @enum {string} */
+      party: "SHIPPER" | "RECEIVER" | "THIRD_PARTY";
+      /** @description Required for third party; optional for receiver (required for credit). Must be an active in-scope account in this tenant. Shipper uses the booking customer. */
+      customerId?: string;
+    };
+    /** @description Transportation and duty/tax payers are independent. Omission defaults to shipper transportation and receiver duties. Duty/tax instructions do not assess or collect customs duties. */
+    BillingInstructions: {
+      transportation: components["schemas"]["BillingParty"];
+      dutyTax: components["schemas"]["BillingParty"];
+    };
+    CustomsItem: {
+      description: string;
+      quantity: number;
+      unitOfMeasure: string;
+      unitValueMinor: components["schemas"]["MinorAmount"];
+      countryOfOrigin: string;
+      hsCode?: string;
+    };
+    /** @description Customs values use the shipment currency. The server derives goods value after discount, the configured insurance premium and invoice total. Freight and other customs valuation charges do not override shipping rates. No FX conversion or customs filing is performed. */
+    CustomsDeclaration: {
+      invoiceNumber?: string;
+      declarationStatement?: string;
+      reasonForExport: string;
+      termsOfSale?: string;
+      /** @enum {string} */
+      currency: "NGN" | "INR" | "USD";
+      items: components["schemas"]["CustomsItem"][];
+      discountMinor?: components["schemas"]["MinorAmount"];
+      freightMinor?: components["schemas"]["MinorAmount"];
+      otherChargesMinor?: components["schemas"]["MinorAmount"];
+    };
+    CustomsSummary: {
+      declaration: components["schemas"]["CustomsDeclaration"];
+      lineTotalsMinor: number[];
+      goodsSubtotalMinor: components["schemas"]["MinorAmount"];
+      declaredValueMinor: components["schemas"]["MinorAmount"];
+      insuranceMinor: components["schemas"]["MinorAmount"];
+      invoiceTotalMinor: components["schemas"]["MinorAmount"];
+    };
+    CommercialSnapshot: {
+      insurance: components["schemas"]["InsuranceDecision"];
+      customs?: components["schemas"]["CustomsSummary"];
+      billing: components["schemas"]["BillingInstructions"];
+    };
+    BookingPreview: {
+      quote: components["schemas"]["Quote"];
+      serviceability: components["schemas"]["ServiceabilityResult"];
+      commercial: components["schemas"]["CommercialSnapshot"];
+      declaredValueMinor: components["schemas"]["MinorAmount"];
     };
     /**
      * @example {
@@ -9750,6 +10008,9 @@ export interface components {
      *     }
      */
     BookingRequest: {
+      insuranceAcceptance?: components["schemas"]["InsuranceAcceptance"];
+      customs?: components["schemas"]["CustomsDeclaration"];
+      billing?: components["schemas"]["BillingInstructions"];
       customerId: string;
       /**
        * @description Your own reference. Unique per customer among non-cancelled
@@ -9844,6 +10105,7 @@ export interface components {
       recipientCity?: string;
     };
     Shipment: {
+      commercial?: components["schemas"]["CommercialSnapshot"];
       id?: string;
       /**
        * @description Tenant prefix, YYMMDD, then a six-digit daily sequence.
@@ -19020,8 +19282,10 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": {
-          originPincode: string;
-          destinationPincode: string;
+          originCountry?: string;
+          destinationCountry?: string;
+          originPincode: components["schemas"]["Pincode"];
+          destinationPincode: components["schemas"]["Pincode"];
           serviceCode: string;
           /** Format: date-time */
           at?: string;

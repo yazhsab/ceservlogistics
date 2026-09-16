@@ -1484,25 +1484,26 @@ SELECT s.id, s.public_id, s.awb, s.booked_at, s.chargeable_weight_grams,
        cs.line_items
 FROM shipments s
 JOIN shipment_charge_snapshots cs ON cs.shipment_id = s.id
+LEFT JOIN shipment_commercial_snapshots commercial ON commercial.shipment_id = s.id AND commercial.organization_id = s.organization_id
 LEFT JOIN invoice_shipments inv ON inv.shipment_id = s.id
 WHERE s.organization_id = $1
-  AND s.customer_id = $2
+  AND (CASE WHEN commercial.shipment_id IS NULL THEN s.customer_id ELSE commercial.transport_customer_id END) = $2
   AND s.payment_mode IN ('CREDIT','PREPAID')
   AND s.current_status NOT IN ('CANCELLED')
-  AND s.booked_at >= $4::timestamptz
-  AND s.booked_at < $5::timestamptz
+  AND s.booked_at >= $3::timestamptz
+  AND s.booked_at < $4::timestamptz
   AND inv.id IS NULL
 ORDER BY s.booked_at, s.id
-LIMIT $3
+LIMIT $5
 FOR UPDATE OF s
 `
 
 type ListBillableShipmentsParams struct {
 	OrganizationID int64
 	CustomerID     int64
-	Limit          int32
 	PeriodStart    time.Time
 	PeriodEnd      time.Time
+	Limit          int32
 }
 
 type ListBillableShipmentsRow struct {
@@ -1540,9 +1541,9 @@ func (q *Queries) ListBillableShipments(ctx context.Context, arg ListBillableShi
 	rows, err := q.db.Query(ctx, listBillableShipments,
 		arg.OrganizationID,
 		arg.CustomerID,
-		arg.Limit,
 		arg.PeriodStart,
 		arg.PeriodEnd,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err

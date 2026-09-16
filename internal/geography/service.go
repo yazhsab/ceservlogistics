@@ -19,6 +19,7 @@ import (
 	"github.com/ceserve/courier-os/internal/platform/cache"
 	"github.com/ceserve/courier-os/internal/platform/database"
 	"github.com/ceserve/courier-os/internal/platform/telemetry"
+	"github.com/ceserve/courier-os/internal/platform/validate"
 )
 
 // DefaultCountry is the ISO-3166 alpha-2 code used when a request omits one.
@@ -114,6 +115,12 @@ func (p *Pincode) View() PincodeView {
 func (s *Service) LookupPincode(ctx context.Context, code, countryISO2 string) (*Pincode, error) {
 	if countryISO2 == "" {
 		countryISO2 = DefaultCountry
+	}
+	countryISO2 = validate.AddressCountry(countryISO2, DefaultCountry)
+	v := validate.New()
+	code = v.PostalCode("pincode", code, countryISO2)
+	if err := v.Err(); err != nil {
+		return nil, err
 	}
 	key := s.pincodeCacheKey(countryISO2, code)
 
