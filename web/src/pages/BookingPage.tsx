@@ -53,6 +53,8 @@ import {
   useCountries,
 } from "./BookingCommercialFields";
 import { insuranceRateLabel } from "../lib/insurance";
+import { useAuth } from "../auth/AuthProvider";
+import { CreateCustomerDialog } from "../components/CreateCustomerDialog";
 import { useToast } from "../components/ToastProvider";
 import {
   Badge,
@@ -236,6 +238,8 @@ const sections = [
 
 export default function BookingPage() {
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const [preview, setPreview] = useState<Preview>();
   const [previewStale, setPreviewStale] = useState(false);
@@ -257,6 +261,8 @@ export default function BookingPage() {
     watch,
     setValue,
     getValues,
+    setError,
+    clearErrors,
     reset,
     formState: { errors },
   } = useForm<BookingValues>({
@@ -339,7 +345,11 @@ export default function BookingPage() {
   }, [preview, watch]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      if (
+        !createCustomerOpen &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key === "Enter"
+      ) {
         event.preventDefault();
         if (preview?.quote && !previewStale) formRef.current?.requestSubmit();
         else void handleSubmit((values) => previewMutation.mutate(values))();
@@ -394,7 +404,20 @@ export default function BookingPage() {
   const previewMutation = useMutation({
     mutationFn: getPreview,
     onMutate: () => {
+      clearErrors(["sender.pincode", "recipient.pincode"]);
       if (preview) setPreviewStale(true);
+    },
+    onError: (error) => {
+      if (
+        error instanceof ApiError &&
+        (error.details.field === "sender.pincode" ||
+          error.details.field === "recipient.pincode")
+      ) {
+        setError(error.details.field, {
+          type: "server",
+          message: error.message,
+        });
+      }
     },
     onSuccess: (value) => {
       setPreview(value);
@@ -554,6 +577,13 @@ export default function BookingPage() {
   if (success) return <BookingSuccess shipment={success} onNew={startNew} />;
   return (
     <>
+      {hasPermission("customer.create") ? (
+        <CreateCustomerDialog
+          open={createCustomerOpen}
+          onOpenChange={setCreateCustomerOpen}
+          onCreated={selectCustomer}
+        />
+      ) : null}
       <PageHeader
         eyebrow="Operations"
         title="Book shipment"
@@ -603,6 +633,7 @@ export default function BookingPage() {
                     label="Customer"
                     htmlFor="customerLookup"
                     required
+                    hint="Type at least two characters, then select the matching saved customer."
                     error={errors.customerId?.message}
                     className="relative sm:col-span-2"
                   >
@@ -632,6 +663,16 @@ export default function BookingPage() {
                           <p className="p-3 text-sm text-slate-500">
                             Searching…
                           </p>
+                        ) : customers.error ? (
+                          <div role="alert" className="p-3 text-sm text-danger">
+                            Customer search failed: {customers.error.message}
+                            <Button
+                              type="button"
+                              onClick={() => void customers.refetch()}
+                            >
+                              Retry search
+                            </Button>
+                          </div>
                         ) : customers.data?.data?.length ? (
                           customers.data.data.map((customer) => (
                             <button
@@ -659,6 +700,31 @@ export default function BookingPage() {
                       </div>
                     ) : null}
                   </Field>
+                  <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
+                    {hasPermission("customer.create") ? (
+                      <>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setCustomerMenuOpen(false);
+                            setCreateCustomerOpen(true);
+                          }}
+                        >
+                          <Plus aria-hidden className="h-4 w-4" /> Add customer
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Create and select a customer without leaving this
+                          booking.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Your role can select existing customers. Ask an
+                        administrator to create a customer or grant customer
+                        creation access.
+                      </p>
+                    )}
+                  </div>
                   {selectedCustomer ? (
                     <div className="sm:col-span-2 flex flex-wrap items-center gap-2 rounded-md bg-emerald-50 p-3 text-sm">
                       <CheckCircle2
@@ -1072,6 +1138,11 @@ export default function BookingPage() {
                 register={register}
                 setValue={setValue}
                 errors={errors}
+                confirmedCustoms={
+                  !previewStale && !previewMutation.error
+                    ? preview?.commercial?.customs
+                    : undefined
+                }
               />
               <div id="review" className="scroll-mt-32 xl:hidden">
                 <ReviewSummary
@@ -1413,6 +1484,11 @@ function AddressFields({
       <Field
         label="Postal code"
         htmlFor={`${prefix}-pincode`}
+        hint={
+          country === "NG"
+            ? "Use the actual six-digit Nigerian postal code. Find area or city can help locate it."
+            : undefined
+        }
         required
         error={errors?.pincode?.message}
       >
@@ -1497,7 +1573,44 @@ function ReviewSummary({
       {error ? (
         <div className="p-4">
           <InlineNotice tone="danger" title="Preview could not be generated">
-            {error.message}
+            <p>{error.message}</p>
+            {error instanceof ApiError &&
+            (error.details.field === "sender.pincode" ||
+              error.details.field === "recipient.pincode") ? (
+              <div className="mt-3 space-y-2">
+                <p>
+                  Check the{" "}
+                  {error.details.field === "sender.pincode"
+                    ? "sender"
+                    : "recipient"}{" "}
+                  postal code and selected country. Use Find area or city to
+                  locate the actual address. If the code is correct, ask the
+                  network administrator to configure its postal record, coverage
+                  and route.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const prefix =
+                      error.details.field === "sender.pincode"
+                        ? "sender"
+                        : "recipient";
+                    document
+                      .getElementById(prefix)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    document
+                      .getElementById(`${prefix}-pincode`)
+                      ?.focus({ preventScroll: true });
+                  }}
+                >
+                  Check{" "}
+                  {error.details.field === "sender.pincode"
+                    ? "sender"
+                    : "recipient"}{" "}
+                  address
+                </Button>
+              </div>
+            ) : null}
           </InlineNotice>
         </div>
       ) : !preview ? (

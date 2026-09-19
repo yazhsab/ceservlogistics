@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   apiRequest,
   clearTokens,
@@ -23,21 +24,31 @@ interface AuthContextValue {
   isRestoring: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
   logout: (allDevices?: boolean) => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<UserProfile>;
   hasPermission: (permission?: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function clearOperationalSelection() {
+  // A facility selected by the previous account is not valid session context.
+  for (const key of ["courier.scan-facility", "courier.hub-facility"]) {
+    localStorage.removeItem(key);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile>();
   const [isRestoring, setIsRestoring] = useState(hasRefreshToken());
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const authenticationLost = useCallback(() => {
+    queryClient.clear();
+    clearOperationalSelection();
     setUser(undefined);
     void navigate("/login", { replace: true });
-  }, [navigate]);
+  }, [navigate, queryClient]);
 
   useEffect(() => {
     configureApiAuth({
@@ -46,7 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticationLost]);
 
   const refreshProfile = useCallback(async () => {
-    setUser(await apiRequest<UserProfile>("/api/v1/auth/me"));
+    const profile = await apiRequest<UserProfile>("/api/v1/auth/me");
+    setUser(profile);
+    return profile;
   }, []);
 
   useEffect(() => {
@@ -62,19 +75,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsRestoring(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const response = await apiRequest<{ tokens: TokenPair; user: UserProfile }>(
-      "/api/v1/auth/login",
-      {
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const response = await apiRequest<{
+        tokens: TokenPair;
+        user: UserProfile;
+      }>("/api/v1/auth/login", {
         method: "POST",
         body: { email, password },
         auth: false,
-      },
-    );
-    setTokens(response.tokens);
-    setUser(response.user);
-    return response.user;
-  }, []);
+      });
+      queryClient.clear();
+      clearOperationalSelection();
+      setTokens(response.tokens);
+      setUser(response.user);
+      return response.user;
+    },
+    [queryClient],
+  );
 
   const logout = useCallback(
     async (allDevices = false) => {
@@ -85,11 +103,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       } finally {
         clearTokens();
+        queryClient.clear();
+        clearOperationalSelection();
         setUser(undefined);
         void navigate("/login", { replace: true });
       }
     },
-    [navigate],
+    [navigate, queryClient],
   );
 
   const value = useMemo<AuthContextValue>(

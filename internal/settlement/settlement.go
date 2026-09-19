@@ -1057,9 +1057,17 @@ func maxInt32(a, b int32) int32 {
 }
 
 // Get returns a settlement with its lines, adjustments, approvals and payments.
+type Detail struct {
+	Settlement dbgen.GetSettlementByPublicIDRow
+	Lines      []dbgen.ListSettlementLinesRow
+	ByCategory []dbgen.SumSettlementLinesByCategoryRow
+	Approvals  []dbgen.ListSettlementApprovalsRow
+	Payments   []dbgen.ListSettlementPaymentsRow
+}
+
 func (s *Service) Get(
 	ctx context.Context, p *tenant.Principal, publicID string,
-) (map[string]any, error) {
+) (*Detail, error) {
 	header, err := s.q.GetSettlementByPublicID(ctx, dbgen.GetSettlementByPublicIDParams{
 		OrganizationID: p.OrganizationID, PublicID: publicID,
 	})
@@ -1082,10 +1090,7 @@ func (s *Service) Get(
 	if err != nil {
 		return nil, apierr.Internal(err)
 	}
-	return map[string]any{
-		"settlement": header, "lines": lines, "byCategory": byCategory,
-		"approvals": approvals, "payments": payments,
-	}, nil
+	return &Detail{Settlement: header, Lines: lines, ByCategory: byCategory, Approvals: approvals, Payments: payments}, nil
 }
 
 // List returns the settlement register.

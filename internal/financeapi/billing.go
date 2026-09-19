@@ -18,6 +18,7 @@ func (h *Handler) invoiceRoutes(r chi.Router) {
 	r.Get("/", require("invoice.read", h.listInvoices))
 	r.Post("/", require("invoice.create", h.draftInvoice))
 	r.Get("/{invoiceId}", require("invoice.read", h.getInvoice))
+	r.Get("/{invoiceId}/credit-notes", require("invoice.read", h.listInvoiceCreditNotes))
 	r.Post("/{invoiceId}/issue", require("invoice.issue", h.issueInvoice))
 	r.Post("/{invoiceId}/payments", require("invoice.payment", h.payInvoice))
 	r.Get("/outstanding/{customerId}", require("invoice.read", h.customerOutstanding))
@@ -44,6 +45,35 @@ type draftInvoiceRequest struct {
 		RateBp   int32          `json:"rateBp"`
 		Metadata map[string]any `json:"metadata,omitempty"`
 	} `json:"taxes,omitempty"`
+}
+
+func (h *Handler) listInvoiceCreditNotes(w http.ResponseWriter, r *http.Request) error {
+	p, err := principal(r)
+	if err != nil {
+		return err
+	}
+	id, err := pathID(r, "invoiceId", "inv", "Invoice")
+	if err != nil {
+		return err
+	}
+	n := limit(r)
+	rows, invoiceNumber, err := h.billing.ListInvoiceCreditNotes(r.Context(), p, id, r.URL.Query().Get("cursor"), n)
+	if err != nil {
+		return err
+	}
+	hasMore := len(rows) > int(n)
+	if hasMore {
+		rows = rows[:n]
+	}
+	var nextCursor string
+	if hasMore && len(rows) > 0 {
+		nextCursor = rows[len(rows)-1].PublicID
+	}
+	data := make([]creditNoteView, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, creditNoteListResponse(row, invoiceNumber))
+	}
+	return httpx.OK(w, map[string]any{"data": data, "pagination": map[string]any{"hasMore": hasMore, "nextCursor": nextCursor}})
 }
 
 func (h *Handler) draftInvoice(w http.ResponseWriter, r *http.Request) error {
@@ -87,8 +117,12 @@ func (h *Handler) draftInvoice(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	header, err := h.invoiceHeader(r, res.Invoice.PublicID)
+	if err != nil {
+		return err
+	}
 	return httpx.Created(w, "/api/v1/invoices/"+res.Invoice.PublicID, map[string]any{
-		"invoice": res.Invoice, "lines": res.Lines, "taxes": res.Taxes,
+		"invoice": header, "lines": projectRows(res.Lines, invoiceLineResponse), "taxes": projectRows(res.Taxes, invoiceTaxResponse),
 	})
 }
 
@@ -105,7 +139,11 @@ func (h *Handler) issueInvoice(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, invoice)
+	header, err := h.invoiceHeader(r, invoice.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, header)
 }
 
 func (h *Handler) getInvoice(w http.ResponseWriter, r *http.Request) error {
@@ -121,8 +159,12 @@ func (h *Handler) getInvoice(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	header, err := h.invoiceHeader(r, res.Invoice.PublicID)
+	if err != nil {
+		return err
+	}
 	return httpx.OK(w, map[string]any{
-		"invoice": res.Invoice, "lines": res.Lines, "taxes": res.Taxes,
+		"invoice": header, "lines": projectRows(res.Lines, invoiceLineResponse), "taxes": projectRows(res.Taxes, invoiceTaxResponse),
 	})
 }
 
@@ -137,7 +179,7 @@ func (h *Handler) listInvoices(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	return httpx.OK(w, map[string]any{"data": projectRows(rows, invoiceListResponse)})
 }
 
 type invoicePaymentRequest struct {
@@ -175,7 +217,11 @@ func (h *Handler) payInvoice(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"payment": payment, "invoice": invoice})
+	header, err := h.invoiceHeader(r, invoice.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, map[string]any{"payment": invoicePaymentResponse(*payment), "invoice": header})
 }
 
 func (h *Handler) customerOutstanding(w http.ResponseWriter, r *http.Request) error {
@@ -229,7 +275,11 @@ func (h *Handler) raiseCreditNote(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "/api/v1/credit-notes/"+note.PublicID, note)
+	header, err := h.creditNoteHeader(r, note.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.Created(w, "/api/v1/credit-notes/"+note.PublicID, header)
 }
 
 func (h *Handler) issueCreditNote(w http.ResponseWriter, r *http.Request) error {
@@ -245,5 +295,9 @@ func (h *Handler) issueCreditNote(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, note)
+	header, err := h.creditNoteHeader(r, note.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, header)
 }

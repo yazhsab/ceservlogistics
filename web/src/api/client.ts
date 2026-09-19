@@ -299,6 +299,10 @@ export type QueuedReportResponse =
 
 export type CODCollectionRequest =
   operations["recordCODCollection"]["requestBody"]["content"]["application/json"];
+export type CODCollectionResult =
+  operations["recordCODCollection"]["responses"][200]["content"]["application/json"];
+export type InvoiceCreditNotePage =
+  operations["listInvoiceCreditNotes"]["responses"][200]["content"]["application/json"];
 export type CODTransferRequest =
   operations["declareCODTransfer"]["requestBody"]["content"]["application/json"];
 export type CODReconciliationRequest =

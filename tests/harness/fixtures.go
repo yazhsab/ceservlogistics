@@ -591,7 +591,8 @@ func (e *Env) createServiceArea(t *testing.T, orgID, unitID, pincodeID int64, ar
 	if _, err := e.Queries.CreateServiceArea(context.Background(), dbgen.CreateServiceAreaParams{
 		PublicID: publicid.New(publicid.PrefixServiceArea), OrganizationID: orgID,
 		OperatingUnitID: unitID, PincodeID: pincodeID, AreaType: areaType,
-		Priority: priority, EffectiveFrom: time.Now().Add(-time.Hour),
+		// Pickup serviceability resolves at scheduled-day midnight.
+		Priority: priority, EffectiveFrom: time.Now().AddDate(0, 0, -1),
 	}); err != nil {
 		t.Fatalf("create service area: %v", err)
 	}

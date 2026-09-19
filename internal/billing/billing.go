@@ -960,6 +960,31 @@ func (s *Service) ListInvoices(
 	return rows, nil
 }
 
+// ListInvoiceCreditNotes lets a checker retrieve drafts raised by another user.
+// Resolve both invoice and cursor inside the caller's tenant before listing.
+func (s *Service) ListInvoiceCreditNotes(ctx context.Context, p *tenant.Principal, invoiceID, cursor string, limit int32) ([]dbgen.ListCreditNotesRow, string, error) {
+	header, err := s.q.GetInvoiceByPublicID(ctx, dbgen.GetInvoiceByPublicIDParams{OrganizationID: p.OrganizationID, PublicID: invoiceID})
+	if err != nil {
+		return nil, "", ops.NotFoundOr(err, "Invoice")
+	}
+	var cursorID *int64
+	if cursor != "" {
+		note, err := s.q.GetCreditNoteByPublicID(ctx, dbgen.GetCreditNoteByPublicIDParams{OrganizationID: p.OrganizationID, PublicID: cursor})
+		if err != nil {
+			return nil, "", ops.NotFoundOr(err, "Credit note cursor")
+		}
+		if note.InvoiceID == nil || *note.InvoiceID != header.ID {
+			return nil, "", apierr.Validation("The cursor belongs to a different invoice.", nil)
+		}
+		cursorID = &note.ID
+	}
+	rows, err := s.q.ListCreditNotes(ctx, dbgen.ListCreditNotesParams{OrganizationID: p.OrganizationID, InvoiceID: &header.ID, CursorID: cursorID, Limit: limit + 1})
+	if err != nil {
+		return nil, "", apierr.Internal(err)
+	}
+	return rows, header.InvoiceNumber, nil
+}
+
 // allocateNumber produces the next statutory number in a series.
 //
 // The financial-year scope means a series restarts each year without colliding

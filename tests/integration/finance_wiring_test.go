@@ -2,6 +2,7 @@ package integration
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ceserve/courier-os/tests/harness"
 )
@@ -115,8 +116,8 @@ func TestASettlementForRealDeliveryWorkIsNotEmpty(t *testing.T) {
 	admin := env.Login(t, tn.AdminEmail, tn.AdminPassword)
 	resp := env.Do(t, "POST", "/api/v1/settlements", admin, map[string]any{
 		"franchiseId": franchisePubID,
-		"periodStart": "2026-08-01",
-		"periodEnd":   "2026-08-31",
+		"periodStart": time.Now().UTC().Format("2006-01-02"),
+		"periodEnd":   time.Now().UTC().Format("2006-01-02"),
 	}, [2]string{"Idempotency-Key", "settle-" + harness.RandomKey()})
 	if resp.Status != 201 && resp.Status != 200 {
 		t.Fatalf("generate settlement: %d %s", resp.Status, resp.Raw)

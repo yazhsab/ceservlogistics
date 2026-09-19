@@ -1123,6 +1123,72 @@ func (q *Queries) ListPermissions(ctx context.Context) ([]Permission, error) {
 	return items, nil
 }
 
+const listRoleAssignmentsForUsers = `-- name: ListRoleAssignmentsForUsers :many
+SELECT ur.user_id, ur.granted_at, r.public_id AS role_public_id,
+       r.code AS role_code, r.name AS role_name,
+       ou.public_id AS operating_unit_public_id, ou.code AS operating_unit_code,
+       ou.name AS operating_unit_name, ou.unit_type AS operating_unit_type,
+       g.full_name AS granted_by_name
+FROM user_roles ur
+JOIN users u ON u.id = ur.user_id AND u.organization_id = ur.organization_id
+JOIN roles r ON r.id = ur.role_id
+LEFT JOIN operating_units ou ON ou.id = ur.operating_unit_id
+LEFT JOIN users g ON g.id = ur.granted_by
+WHERE ur.organization_id = $1
+  AND ur.user_id = ANY($2::bigint[])
+ORDER BY ur.user_id, r.code, ou.code NULLS FIRST
+`
+
+type ListRoleAssignmentsForUsersParams struct {
+	OrganizationID int64
+	UserIds        []int64
+}
+
+type ListRoleAssignmentsForUsersRow struct {
+	UserID                int64
+	GrantedAt             time.Time
+	RolePublicID          string
+	RoleCode              string
+	RoleName              string
+	OperatingUnitPublicID *string
+	OperatingUnitCode     *string
+	OperatingUnitName     *string
+	OperatingUnitType     *string
+	GrantedByName         *string
+}
+
+// Resolve assignments for one tenant's current page without a query per user.
+func (q *Queries) ListRoleAssignmentsForUsers(ctx context.Context, arg ListRoleAssignmentsForUsersParams) ([]ListRoleAssignmentsForUsersRow, error) {
+	rows, err := q.db.Query(ctx, listRoleAssignmentsForUsers, arg.OrganizationID, arg.UserIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoleAssignmentsForUsersRow{}
+	for rows.Next() {
+		var i ListRoleAssignmentsForUsersRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.GrantedAt,
+			&i.RolePublicID,
+			&i.RoleCode,
+			&i.RoleName,
+			&i.OperatingUnitPublicID,
+			&i.OperatingUnitCode,
+			&i.OperatingUnitName,
+			&i.OperatingUnitType,
+			&i.GrantedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRolePermissionCodes = `-- name: ListRolePermissionCodes :many
 SELECT p.code FROM role_permissions rp
 JOIN permissions p ON p.id = rp.permission_id

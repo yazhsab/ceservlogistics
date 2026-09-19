@@ -249,6 +249,9 @@ export function NDRDetailPage() {
         description="Check the case identifier."
       />
     );
+  const availableActions = (item.availableActions ?? []).filter(
+    (action) => action !== "RTO" || hasPermission("rto.manage"),
+  );
   const timeline = [
     ...(item.attempts ?? []).map((attempt) => ({
       key: attempt.id ?? `attempt-${attempt.attemptNumber}`,
@@ -281,7 +284,7 @@ export function NDRDetailPage() {
         actions={
           <>
             <StatusBadge status={item.status} />
-            {hasPermission("ndr.manage") && item.availableActions?.length ? (
+            {hasPermission("ndr.manage") && availableActions.length ? (
               <Button variant="primary" onClick={() => setActionOpen(true)}>
                 Set next action
               </Button>
@@ -311,7 +314,11 @@ export function NDRDetailPage() {
             value: `${item.attemptCount ?? 0} / ${item.maxAttempts ?? 0}`,
             icon: Truck,
           },
-          { label: "Reason", value: item.currentReasonCode, icon: CircleAlert },
+          {
+            label: "Reason",
+            value: item.reasonName ?? titleCase(item.currentReasonCode ?? ""),
+            icon: CircleAlert,
+          },
           {
             label: "Current action",
             value: titleCase(item.currentAction ?? "None"),
@@ -371,7 +378,7 @@ export function NDRDetailPage() {
               <div>
                 <dt className="text-slate-500">Available actions</dt>
                 <dd className="mt-1 flex flex-wrap gap-1">
-                  {item.availableActions?.map((action) => (
+                  {availableActions.map((action) => (
                     <Badge key={action}>{titleCase(action)}</Badge>
                   ))}
                 </dd>
@@ -408,7 +415,7 @@ export function NDRDetailPage() {
         </div>
       </div>
       <NDRActionDialog
-        item={item}
+        item={{ ...item, availableActions }}
         open={actionOpen}
         onOpenChange={setActionOpen}
       />
@@ -939,7 +946,7 @@ export function RTODetailPage() {
     },
     ...(item.legs ?? []).map((leg) => ({
       key: String(leg.sequence),
-      title: `${leg.from?.name ?? leg.from?.code} → ${leg.to?.name ?? leg.to?.code}`,
+      title: `${leg.from?.name ?? leg.from?.code ?? "Facility"} → ${leg.to?.name ?? leg.to?.code ?? (leg.legType === "BRANCH_TO_SENDER" ? "Sender" : "Facility")}`,
       description: titleCase(leg.legType ?? "Return leg"),
       occurredAt: leg.completedAt ?? leg.startedAt,
       status: leg.status,
@@ -1542,9 +1549,12 @@ function PODArtifactPreview({
       setLoading(false);
     }
   };
-  const isImage = ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(
-    artifact.mimeType?.toLowerCase() ?? "",
-  );
+  const isImage = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+  ].includes(artifact.mimeType?.toLowerCase() ?? "");
   return (
     <article className="overflow-hidden rounded-md border">
       <div className="flex aspect-video items-center justify-center bg-slate-100">

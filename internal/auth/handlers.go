@@ -175,7 +175,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	authz, err := h.svc.q.GetUserAuthorization(r.Context(), user.ID)
+	snapshot, err := h.svc.resolveSession(r.Context(), pair.SessionID)
 	if err != nil {
 		return apierr.Internal(err)
 	}
@@ -198,10 +198,11 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) error {
 				ID: org.PublicID, Code: org.Code, Name: org.Name,
 				Currency: org.Currency, Timezone: org.Timezone, AWBPrefix: org.AwbPrefix,
 			},
-			Roles:                     authz.RoleCodes,
-			Permissions:               authz.PermissionCodes,
-			OperatingUnits:            authz.ScopedUnitPublicIds,
-			HasOrganizationWideAccess: authz.HasUnscopedRole,
+			Roles:                     snapshot.Roles,
+			Permissions:               snapshot.Permissions,
+			OperatingUnits:            snapshot.ScopedUnitPublicIDs,
+			HasOrganizationWideAccess: snapshot.HasUnscopedRole,
+			Portal:                    h.portalSubject(r.Context(), snapshot.toPrincipal(pair.SessionID)),
 		},
 	})
 }
@@ -318,6 +319,10 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return apierr.Internal(err)
 	}
+	org, err := h.svc.q.GetOrganizationByID(r.Context(), p.OrganizationID)
+	if err != nil {
+		return apierr.Internal(err)
+	}
 	return httpx.OK(w, UserProfile{
 		ID:                 p.UserPublicID,
 		Email:              p.Email,
@@ -327,7 +332,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) error {
 		MustChangePassword: user.MustChangePassword,
 		LastLoginAt:        user.LastLoginAt,
 		Organization: OrganizationRef{
-			ID: p.OrganizationPublicID, Code: p.OrganizationCode, Name: p.OrganizationCode,
+			ID: p.OrganizationPublicID, Code: p.OrganizationCode, Name: org.Name,
 			Currency: p.OrganizationCurrency, Timezone: p.OrganizationTimezone,
 			AWBPrefix: p.OrganizationAWBPrefix,
 		},

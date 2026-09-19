@@ -8,7 +8,7 @@ import {
   Trash2,
   UserRoundCog,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useParams } from "react-router-dom";
 import { z } from "zod";
@@ -185,16 +185,22 @@ export function UsersPage() {
                           ))
                         ) : (
                           <span className="text-xs text-slate-400">
-                            No roles
+                            {user.roles
+                              ? "No roles"
+                              : "Open user to view roles"}
                           </span>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {user.roles
-                        ?.map((role) => role.operatingUnit?.code)
-                        .filter(Boolean)
-                        .join(", ") || "Organization"}
+                      {user.roles === undefined
+                        ? "View user details"
+                        : !user.roles.length
+                          ? "No scope assigned"
+                          : user.roles
+                              ?.map((role) => role.operatingUnit?.code)
+                              .filter(Boolean)
+                              .join(", ") || "Organization"}
                     </TableCell>
                     <TableCell>{formatDateTime(user.lastLoginAt)}</TableCell>
                   </tr>
@@ -819,7 +825,10 @@ export function RolesPage() {
   const client = useQueryClient();
   const [selected, setSelected] = useState<Role>();
   const [createOpen, setCreateOpen] = useState(false);
-  const [draftPermissions, setDraftPermissions] = useState<string[]>([]);
+  const [permissionDraft, setPermissionDraft] = useState<{
+    roleId: string;
+    permissions: string[];
+  }>();
   const roles = useQuery({
     queryKey: ["roles"],
     queryFn: () => apiRequest<RoleListResponse>("/api/v1/roles"),
@@ -842,18 +851,26 @@ export function RolesPage() {
       ),
     [permissions.data],
   );
-  const role = selected ?? roles.data?.data?.[0];
-  useEffect(() => {
-    setDraftPermissions(role?.permissions?.filter(Boolean) ?? []);
-  }, [role?.id, role?.permissions]);
+  const summary = selected ?? roles.data?.data?.[0];
+  const roleDetail = useQuery({
+    queryKey: ["role", summary?.id],
+    queryFn: () => apiRequest<Role>(`/api/v1/roles/${summary?.id}`),
+    enabled: Boolean(summary?.id),
+  });
+  const role = roleDetail.data;
+  const draftPermissions =
+    permissionDraft?.roleId === role?.id
+      ? (permissionDraft?.permissions ?? [])
+      : (role?.permissions ?? []);
   const updatePermissions = useMutation({
-    mutationFn: () =>
-      apiRequest<Role>(`/api/v1/roles/${role?.id}/permissions`, {
+    mutationFn: (values: { id: string; permissions: string[] }) =>
+      apiRequest<Role>(`/api/v1/roles/${values.id}/permissions`, {
         method: "PUT",
-        body: { permissions: draftPermissions },
+        body: { permissions: values.permissions },
       }),
     onSuccess: (updated) => {
-      setSelected(updated);
+      client.setQueryData(["role", updated.id], updated);
+      setPermissionDraft(undefined);
       void client.invalidateQueries({ queryKey: ["roles"] });
       toast({ tone: "success", title: "Role permissions updated" });
     },
@@ -894,7 +911,7 @@ export function RolesPage() {
               <button
                 key={item.id}
                 onClick={() => setSelected(item)}
-                className={`mb-1 w-full rounded-md px-3 py-2.5 text-left ${role?.id === item.id ? "bg-emerald-50 text-emerald-950" : "hover:bg-muted"}`}
+                className={`mb-1 w-full rounded-md px-3 py-2.5 text-left ${summary?.id === item.id ? "bg-emerald-50 text-emerald-950" : "hover:bg-muted"}`}
               >
                 <span className="flex items-center justify-between gap-2">
                   <strong className="text-sm">{item.name}</strong>
@@ -932,13 +949,27 @@ export function RolesPage() {
                 size="sm"
                 variant="primary"
                 loading={updatePermissions.isPending}
-                onClick={() => updatePermissions.mutate()}
+                disabled={!role?.id || roleDetail.isFetching}
+                onClick={() => {
+                  if (role?.id)
+                    updatePermissions.mutate({
+                      id: role.id,
+                      permissions: draftPermissions,
+                    });
+                }}
               >
                 Save permissions
               </Button>
             ) : null}
           </div>
-          {role ? (
+          {roleDetail.isLoading ? (
+            <LoadingState label="Loading role permissions" />
+          ) : roleDetail.error ? (
+            <ErrorState
+              error={roleDetail.error}
+              retry={() => void roleDetail.refetch()}
+            />
+          ) : role ? (
             <div className="overflow-x-auto">
               <table
                 className="w-full min-w-[700px] text-sm"
@@ -978,11 +1009,15 @@ export function RolesPage() {
                               )}
                               onChange={(event) => {
                                 const code = permission.code ?? "";
-                                setDraftPermissions((current) =>
-                                  event.target.checked
-                                    ? [...current, code]
-                                    : current.filter((item) => item !== code),
-                                );
+                                if (role.id)
+                                  setPermissionDraft({
+                                    roleId: role.id,
+                                    permissions: event.target.checked
+                                      ? [...draftPermissions, code]
+                                      : draftPermissions.filter(
+                                          (item) => item !== code,
+                                        ),
+                                  });
                               }}
                             />
                           ) : (
@@ -1017,6 +1052,9 @@ export function RolesPage() {
           )}
         </Panel>
       </div>
+      {updatePermissions.error ? (
+        <ErrorState error={updatePermissions.error} />
+      ) : null}
       <CreateRoleDialog
         open={createOpen}
         onOpenChange={setCreateOpen}

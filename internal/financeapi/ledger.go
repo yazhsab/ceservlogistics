@@ -191,8 +191,11 @@ func (h *Handler) postJournal(w http.ResponseWriter, r *http.Request) error {
 	}); err != nil {
 		return err
 	}
-	return httpx.Created(w, "/api/v1/ledger/journals/"+result.Transaction.PublicID,
-		map[string]any{"transaction": result.Transaction, "entries": result.Entries})
+	txn, entries, err := h.ledger.GetJournal(r.Context(), p, result.Transaction.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.Created(w, "/api/v1/ledger/journals/"+result.Transaction.PublicID, map[string]any{"transaction": journalDetailResponse(*txn), "entries": projectRows(entries, journalEntryResponse)})
 }
 
 func (h *Handler) getJournal(w http.ResponseWriter, r *http.Request) error {
@@ -208,7 +211,7 @@ func (h *Handler) getJournal(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"transaction": txn, "entries": entries})
+	return httpx.OK(w, map[string]any{"transaction": journalDetailResponse(*txn), "entries": projectRows(entries, journalEntryResponse)})
 }
 
 type reverseRequest struct {
@@ -251,8 +254,12 @@ func (h *Handler) reverseJournal(w http.ResponseWriter, r *http.Request) error {
 	}); err != nil {
 		return err
 	}
+	reversal, entries, err := h.ledger.GetJournal(r.Context(), p, result.Transaction.PublicID)
+	if err != nil {
+		return err
+	}
 	return httpx.OK(w, map[string]any{
-		"reversal": result.Transaction, "entries": result.Entries,
+		"reversal": journalDetailResponse(*reversal), "entries": projectRows(entries, journalEntryResponse),
 	})
 }
 
@@ -275,7 +282,7 @@ func (h *Handler) listJournals(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	return httpx.OK(w, map[string]any{"data": projectRows(rows, journalListResponse)})
 }
 
 func (h *Handler) trialBalance(w http.ResponseWriter, r *http.Request) error {
@@ -329,7 +336,7 @@ func (h *Handler) listPeriods(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	return httpx.OK(w, map[string]any{"data": projectRows(rows, periodResponse)})
 }
 
 type reasonRequest struct {
@@ -353,7 +360,7 @@ func (h *Handler) closePeriod(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, period)
+	return httpx.OK(w, periodResponse(*period))
 }
 
 func (h *Handler) reopenPeriod(w http.ResponseWriter, r *http.Request) error {
@@ -373,5 +380,5 @@ func (h *Handler) reopenPeriod(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, period)
+	return httpx.OK(w, periodResponse(*period))
 }

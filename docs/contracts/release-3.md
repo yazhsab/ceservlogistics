@@ -651,3 +651,32 @@ frontend that read this contract earlier was told they were missing.
   not exist. The workflow is now
   `POST /api/v1/settlements/{id}/adjustments` (maker) and
   `POST /api/v1/settlement-adjustments/{id}/approve` (checker) — see §11A.
+
+## 13. Finance response verification — 19 September 2026
+
+Finance HTTP responses use lower-camel-case OpenAPI fields and public `id`
+strings. Journal `sourceId` is the public source reference; dates declared as
+`date` use YYYY-MM-DD. Register rows and create/detail/action responses use
+the same identity and value fields. Database tenant and request columns are
+not serialized into these objects. Monetary calculations and authorization
+remain in the services.
+
+Settlement `collectionsMinor` is the signed subtotal for prepaid money held
+by the franchise. Its `CUSTOMER_COLLECTION` lines refer to
+`FRANCHISE_COLLECTION` sources. Show it separately from COD liability.
+
+The historical delivery-hook limitation in §12 is superseded: the
+`financeops` transition observer now raises applicable delivery commission
+and opens COD obligations. Recording COD collection is a separate operation.
+
+The delivery completion screen exposes explicit COD collection to users with
+`cod.collect`. It sends the server-confirmed amount and the selected payment
+method to the existing collection endpoint. Network retries retain the same
+body and device-event key; a completed stop stays completed when reopened.
+
+`GET /api/v1/invoices/{invoiceId}/credit-notes` requires `invoice.read` and
+returns `{data, pagination: {hasMore, nextCursor}}`, newest first. `limit`
+bounds the page and `cursor` is a public note ID belonging to the same invoice.
+Both references are tenant-scoped. The invoice detail shows drafts for another
+checker to review and issue using the existing `creditnote.approve` endpoint;
+reading the register does not relax maker/checker enforcement.

@@ -3720,6 +3720,52 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/shipments/customs/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Calculate customs goods valuation before route and shipment pricing
+     * @description Requires shipment.create. Validates declaration and active goods countries, and calculates line totals, goods value after discount and total before insurance. Does not require a customer, postal code or serviceable route; does not allocate an AWB or persist data. Insurance and final currency compatibility are verified by full shipment preview. Enter unit values and customs freight from the commercial invoice; these are not inferred from transport tariffs.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CustomsDeclaration"];
+        };
+      };
+      responses: {
+        /** @description Customs valuation excluding insurance, not a shipment quote. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["CustomsValuationPreview"];
+          };
+        };
+        401: components["responses"]["Unauthorized"];
+        403: components["responses"]["Forbidden"];
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/shipments/preview": {
     parameters: {
       query?: never;
@@ -7034,6 +7080,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/invoices/{invoiceId}/credit-notes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        invoiceId: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * List credit and debit notes for an invoice
+     * @description Requires `invoice.read`. Tenant-scoped, newest first; a different checker can retrieve and issue a draft. The optional public note cursor must belong to this invoice.
+     */
+    get: operations["listInvoiceCreditNotes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/credit-notes": {
     parameters: {
       query?: never;
@@ -9945,6 +10013,14 @@ export interface components {
       discountMinor?: components["schemas"]["MinorAmount"];
       freightMinor?: components["schemas"]["MinorAmount"];
       otherChargesMinor?: components["schemas"]["MinorAmount"];
+    };
+    CustomsValuationPreview: {
+      /** @enum {string} */
+      currency: "NGN" | "INR" | "USD";
+      lineTotalsMinor: components["schemas"]["MinorAmount"][];
+      goodsSubtotalMinor: components["schemas"]["MinorAmount"];
+      declaredValueMinor: components["schemas"]["MinorAmount"];
+      totalBeforeInsuranceMinor: components["schemas"]["MinorAmount"];
     };
     CustomsSummary: {
       declaration: components["schemas"]["CustomsDeclaration"];
@@ -13061,6 +13137,8 @@ export interface components {
       incentiveMinor?: number;
       /** @description Negative — COD held reduces what is owed. */
       codLiabilityMinor?: number;
+      /** @description Negative — prepaid customer money held by the franchise reduces what is owed. */
+      collectionsMinor?: number;
       chargesMinor?: number;
       penaltiesMinor?: number;
       adjustmentsMinor?: number;
@@ -13090,6 +13168,7 @@ export interface components {
         | "VOLUME_INCENTIVE"
         | "CUSTOM_COMMISSION"
         | "COD_LIABILITY"
+        | "CUSTOMER_COLLECTION"
         | "CHARGE"
         | "PENALTY"
         | "INCENTIVE"
@@ -13106,6 +13185,7 @@ export interface components {
         | "COMMISSION_CALCULATION"
         | "COD_OBLIGATION"
         | "COD_ADJUSTMENT"
+        | "FRANCHISE_COLLECTION"
         | "SETTLEMENT_ADJUSTMENT"
         | "PREVIOUS_SETTLEMENT"
         | "TAX_RULE"
@@ -19153,6 +19233,46 @@ export interface operations {
             invoiceCount?: number;
             currency?: string;
           };
+        };
+      };
+    };
+  };
+  listInvoiceCreditNotes: {
+    parameters: {
+      query?: {
+        limit?: components["parameters"]["Limit"];
+        cursor?: string;
+      };
+      header?: never;
+      path: {
+        invoiceId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A page of notes and a continuation cursor. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            data?: components["schemas"]["CreditNote"][];
+            pagination?: {
+              hasMore?: boolean;
+              nextCursor?: string;
+            };
+          };
+        };
+      };
+      /** @description Invoice or note cursor not found in the caller's organization. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
     };

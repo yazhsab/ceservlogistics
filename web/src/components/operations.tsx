@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -62,7 +63,7 @@ export function OperationalMetricStrip({
           <div
             key={item.label}
             className={cn(
-              "flex min-h-20 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:border-r",
+              "flex min-h-20 min-w-0 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:border-r",
               items.length <= 4
                 ? "lg:border-b-0"
                 : items.length < 10
@@ -84,7 +85,7 @@ export function OperationalMetricStrip({
               </span>
             ) : null}
             <span className="min-w-0">
-              <strong className="block text-xl font-bold tabular-nums text-slate-950">
+              <strong className="block break-words text-xl font-bold tabular-nums text-slate-950 [overflow-wrap:anywhere]">
                 {item.value ?? "—"}
               </strong>
               <span className="block truncate text-xs font-medium text-slate-500">
@@ -172,32 +173,38 @@ export const ScannerInput = forwardRef<
     const wedgeLastAt = useRef(0);
     const wedgeTimer = useRef<number | undefined>(undefined);
 
-    const dispatch = (raw: string) => {
-      const normalized = raw.trim().toUpperCase();
-      if (!normalized || busy) return;
-      window.clearTimeout(wedgeTimer.current);
-      wedgeBuffer.current = "";
-      onScan(normalized);
-    };
+    const dispatch = useCallback(
+      (raw: string) => {
+        const normalized = raw.trim().toUpperCase();
+        if (!normalized || busy) return;
+        window.clearTimeout(wedgeTimer.current);
+        wedgeBuffer.current = "";
+        onScan(normalized);
+      },
+      [busy, onScan],
+    );
 
-    const scheduleWedgeSubmit = (readValue: () => string) => {
-      window.clearTimeout(wedgeTimer.current);
-      wedgeTimer.current = window.setTimeout(() => {
-        const chars = wedgeBuffer.current.length;
-        const duration = wedgeLastAt.current - wedgeStartedAt.current;
-        // Keyboard-wedge scanners emit characters much faster than a person.
-        // This also supports devices configured without an Enter/Tab suffix.
-        if (chars >= 4 && duration / Math.max(1, chars - 1) <= 35) {
-          dispatch(readValue());
-        }
-      }, 90);
-    };
+    const scheduleWedgeSubmit = useCallback(
+      (readValue: () => string) => {
+        window.clearTimeout(wedgeTimer.current);
+        wedgeTimer.current = window.setTimeout(() => {
+          const chars = wedgeBuffer.current.length;
+          const duration = wedgeLastAt.current - wedgeStartedAt.current;
+          // Keyboard-wedge scanners emit characters much faster than a person.
+          // This also supports devices configured without an Enter/Tab suffix.
+          if (chars >= 4 && duration / Math.max(1, chars - 1) <= 35) {
+            dispatch(readValue());
+          }
+        }, 90);
+      },
+      [dispatch],
+    );
     useImperativeHandle(forwardedRef, () => ({
       focus: () => inputRef.current?.focus(),
     }));
     useEffect(() => {
-      if (autoFocus) inputRef.current?.focus();
-    }, [autoFocus]);
+      if (autoFocus && !busy) inputRef.current?.focus();
+    }, [autoFocus, busy]);
     useEffect(() => {
       if (!autoFocus) return;
       const refocus = () => {
@@ -240,7 +247,7 @@ export const ScannerInput = forwardRef<
         window.removeEventListener("focus", refocus);
         window.removeEventListener("keydown", captureWedge);
       };
-    }, [autoFocus, busy, onChange, onScan]);
+    }, [autoFocus, busy, onChange, dispatch, scheduleWedgeSubmit]);
     const submit = (event: FormEvent) => {
       event.preventDefault();
       dispatch(value);

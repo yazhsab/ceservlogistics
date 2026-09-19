@@ -2292,6 +2292,25 @@ paths:
               schema: { $ref: "#/components/schemas/BookingPreview" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
+  /api/v1/shipments/customs/preview:
+    post:
+      tags: [Shipments]
+      summary: Calculate customs goods valuation before route and shipment pricing
+      description: Requires shipment.create. Validates declaration and active goods countries, and calculates line totals, goods value after discount and total before insurance. Does not require a customer, postal code or serviceable route; does not allocate an AWB or persist data. Insurance and final currency compatibility are verified by full shipment preview. Enter unit values and customs freight from the commercial invoice; these are not inferred from transport tariffs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomsDeclaration" }
+      responses:
+        "200":
+          description: Customs valuation excluding insurance, not a shipment quote.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomsValuationPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
   /api/v1/shipments/preview:
     post:
       tags: [Shipments]
@@ -6357,6 +6376,37 @@ paths:
                   invoiceCount: { type: integer }
                   currency: { type: string }
 
+  /api/v1/invoices/{invoiceId}/credit-notes:
+    parameters:
+      - { name: invoiceId, in: path, required: true, schema: { type: string, pattern: '^inv_[0-9A-HJKMNP-TV-Z]{26}$' } }
+    get:
+      tags: [Billing]
+      summary: List credit and debit notes for an invoice
+      operationId: listInvoiceCreditNotes
+      description: Requires `invoice.read`. Tenant-scoped, newest first; a different checker can retrieve and issue a draft. The optional public note cursor must belong to this invoice.
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: cursor, in: query, schema: { type: string, pattern: '^crn_[0-9A-HJKMNP-TV-Z]{26}$' } }
+      responses:
+        '200':
+          description: A page of notes and a continuation cursor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/CreditNote' } }
+                  pagination:
+                    type: object
+                    properties:
+                      hasMore: { type: boolean }
+                      nextCursor: { type: string }
+        '404':
+          description: Invoice or note cursor not found in the caller's organization.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
   /api/v1/credit-notes:
     post:
       tags: [Billing]
@@ -10272,6 +10322,15 @@ components:
         discountMinor: { $ref: "#/components/schemas/MinorAmount" }
         freightMinor: { $ref: "#/components/schemas/MinorAmount" }
         otherChargesMinor: { $ref: "#/components/schemas/MinorAmount" }
+    CustomsValuationPreview:
+      type: object
+      required: [currency, lineTotalsMinor, goodsSubtotalMinor, declaredValueMinor, totalBeforeInsuranceMinor]
+      properties:
+        currency: { type: string, enum: [NGN, INR, USD] }
+        lineTotalsMinor: { type: array, items: { $ref: "#/components/schemas/MinorAmount" } }
+        goodsSubtotalMinor: { $ref: "#/components/schemas/MinorAmount" }
+        declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        totalBeforeInsuranceMinor: { $ref: "#/components/schemas/MinorAmount" }
     CustomsSummary:
       type: object
       required: [declaration, lineTotalsMinor, goodsSubtotalMinor, declaredValueMinor, insuranceMinor, invoiceTotalMinor]
@@ -13097,6 +13156,7 @@ components:
         commissionMinor: { type: integer }
         incentiveMinor: { type: integer }
         codLiabilityMinor: { type: integer, description: Negative — COD held reduces what is owed. }
+        collectionsMinor: { type: integer, description: Negative — prepaid customer money held by the franchise reduces what is owed. }
         chargesMinor: { type: integer }
         penaltiesMinor: { type: integer }
         adjustmentsMinor: { type: integer }
@@ -13115,12 +13175,12 @@ components:
       properties:
         id: { type: string, example: "sln_01K2M3N4P5Q6R7S8T9V0W1X2Y3" }
         lineNo: { type: integer }
-        category: { type: string, enum: [BOOKING_COMMISSION, PICKUP_COMMISSION, ORIGIN_HANDLING, DESTINATION_HANDLING, DELIVERY_COMMISSION, COD_COMMISSION, VOLUME_INCENTIVE, CUSTOM_COMMISSION, COD_LIABILITY, CHARGE, PENALTY, INCENTIVE, ADJUSTMENT, TAX, WITHHOLDING, OPENING_BALANCE] }
+        category: { type: string, enum: [BOOKING_COMMISSION, PICKUP_COMMISSION, ORIGIN_HANDLING, DESTINATION_HANDLING, DELIVERY_COMMISSION, COD_COMMISSION, VOLUME_INCENTIVE, CUSTOM_COMMISSION, COD_LIABILITY, CUSTOMER_COLLECTION, CHARGE, PENALTY, INCENTIVE, ADJUSTMENT, TAX, WITHHOLDING, OPENING_BALANCE] }
         description: { type: string }
         amountMinor: { type: integer }
         currency: { type: string }
         quantity: { type: integer }
-        sourceType: { type: string, enum: [COMMISSION_CALCULATION, COD_OBLIGATION, COD_ADJUSTMENT, SETTLEMENT_ADJUSTMENT, PREVIOUS_SETTLEMENT, TAX_RULE, MANUAL] }
+        sourceType: { type: string, enum: [COMMISSION_CALCULATION, COD_OBLIGATION, COD_ADJUSTMENT, FRANCHISE_COLLECTION, SETTLEMENT_ADJUSTMENT, PREVIOUS_SETTLEMENT, TAX_RULE, MANUAL] }
         sourceId: { type: integer, nullable: true }
         sourcePublicId: { type: string, nullable: true }
         awb: { type: string, nullable: true }

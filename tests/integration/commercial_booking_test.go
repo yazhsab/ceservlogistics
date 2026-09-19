@@ -545,3 +545,57 @@ func TestCommercialInsuranceConditionsAndCompositeRules(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomsValuationBeforeRouteValidation(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	geo := env.Geography(t)
+	tn := env.NewTenant(t, geo, harness.TenantOptions{Code: "CUSTOMSCALC"})
+	body := commercialBooking(tn)
+	declaration := body["customs"].(map[string]any)
+	const path = "/api/v1/shipments/customs/preview"
+	if got := env.Do(t, "POST", path, "", declaration); got.Status != 401 {
+		t.Fatalf("unauthenticated valuation: %d", got.Status)
+	}
+	_, _, denied := env.NewUser(t, tn.OrgID, "no-booking@example.test", "", nil)
+	if got := env.Do(t, "POST", path, denied, declaration); got.Status != 403 {
+		t.Fatalf("unpermitted valuation: %d", got.Status)
+	}
+	got := env.Do(t, "POST", path, tn.AdminAccessTok, declaration)
+	if got.Status != 200 {
+		t.Fatalf("standalone valuation: %d %s", got.Status, got.Raw)
+	}
+	for field, want := range map[string]float64{"goodsSubtotalMinor": 500000, "declaredValueMinor": 450000, "totalBeforeInsuranceMinor": 462000} {
+		if got.Body[field] != want {
+			t.Fatalf("%s: %v want %v", field, got.Body[field], want)
+		}
+	}
+	if got.Body["insuranceMinor"] != nil || got.Body["invoiceTotalMinor"] != nil {
+		t.Fatal("standalone valuation claimed final insurance or invoice total")
+	}
+	body["sender"].(map[string]any)["pincode"] = "999999"
+	failed := env.Do(t, "POST", "/api/v1/shipments/preview", tn.AdminAccessTok, body)
+	if failed.Status != 422 {
+		t.Fatalf("unconfigured postcode: %d %s", failed.Status, failed.Raw)
+	}
+	details := failed.Body["error"].(map[string]any)["details"].(map[string]any)
+	if details["field"] != "sender.pincode" || details["postalCode"] != "999999" || details["countryCode"] != "NG" {
+		t.Fatalf("postal details: %+v", details)
+	}
+	if got := env.Do(t, "POST", path, tn.AdminAccessTok, declaration); got.Status != 200 {
+		t.Fatalf("valuation blocked by route: %d", got.Status)
+	}
+	declaration["discountMinor"] = 500001
+	if got := env.Do(t, "POST", path, tn.AdminAccessTok, declaration); got.Status != 422 {
+		t.Fatalf("excess discount accepted: %d", got.Status)
+	}
+	declaration["discountMinor"] = 0
+	declaration["freightMinor"] = 1_000_000_000_000
+	if got := env.Do(t, "POST", path, tn.AdminAccessTok, declaration); got.Status != 422 {
+		t.Fatalf("excess total accepted: %d", got.Status)
+	}
+	var count int
+	if err := env.DB.Pool.QueryRow(context.Background(), `SELECT count(*) FROM shipments WHERE organization_id=$1`, tn.OrgID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("valuation wrote shipment: %d %v", count, err)
+	}
+}

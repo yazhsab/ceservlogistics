@@ -45,18 +45,18 @@ func (h *UserHandler) Routes(r chi.Router) {
 
 // UserSummary is the list/detail representation of a user.
 type UserSummary struct {
-	ID                 string           `json:"id"`
-	Email              string           `json:"email"`
-	FullName           string           `json:"fullName"`
-	Phone              string           `json:"phone,omitempty"`
-	Status             string           `json:"status"`
-	IsSuperAdmin       bool             `json:"isSuperAdmin"`
-	MustChangePassword bool             `json:"mustChangePassword"`
-	LastLoginAt        *time.Time       `json:"lastLoginAt,omitempty"`
-	LockedUntil        *time.Time       `json:"lockedUntil,omitempty"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	UpdatedAt          time.Time        `json:"updatedAt"`
-	Roles              []RoleAssignment `json:"roles,omitempty"`
+	ID                 string            `json:"id"`
+	Email              string            `json:"email"`
+	FullName           string            `json:"fullName"`
+	Phone              string            `json:"phone,omitempty"`
+	Status             string            `json:"status"`
+	IsSuperAdmin       bool              `json:"isSuperAdmin"`
+	MustChangePassword bool              `json:"mustChangePassword"`
+	LastLoginAt        *time.Time        `json:"lastLoginAt,omitempty"`
+	LockedUntil        *time.Time        `json:"lockedUntil,omitempty"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
+	Roles              *[]RoleAssignment `json:"roles,omitempty"`
 }
 
 // RoleAssignment describes one grant of a role to a user.
@@ -141,16 +141,39 @@ func (h *UserHandler) list(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return apierr.Internal(fmt.Errorf("list users: %w", err))
 	}
+	userIDs := make([]int64, 0, len(rows))
+	for _, u := range rows {
+		userIDs = append(userIDs, u.ID)
+	}
+	assignments, err := h.svc.q.ListRoleAssignmentsForUsers(r.Context(), dbgen.ListRoleAssignmentsForUsersParams{
+		OrganizationID: p.OrganizationID, UserIds: userIDs,
+	})
+	if err != nil {
+		return apierr.Internal(fmt.Errorf("list user assignments: %w", err))
+	}
+	byUser := make(map[int64][]dbgen.ListUserRoleAssignmentsRow)
+	for _, a := range assignments {
+		byUser[a.UserID] = append(byUser[a.UserID], dbgen.ListUserRoleAssignmentsRow{
+			GrantedAt: a.GrantedAt, RolePublicID: a.RolePublicID,
+			RoleCode: a.RoleCode, RoleName: a.RoleName,
+			OperatingUnitPublicID: a.OperatingUnitPublicID, OperatingUnitCode: a.OperatingUnitCode,
+			OperatingUnitName: a.OperatingUnitName, OperatingUnitType: a.OperatingUnitType,
+			GrantedByName: a.GrantedByName,
+		})
+	}
 	var total int64
 	items := make([]UserSummary, 0, len(rows))
 	for _, u := range rows {
 		total = u.TotalCount
-		items = append(items, toUserSummary(dbgen.User{
+		summary := toUserSummary(dbgen.User{
 			PublicID: u.PublicID, Email: u.Email, FullName: u.FullName, Phone: u.Phone,
 			Status: u.Status, IsSuperAdmin: u.IsSuperAdmin, MustChangePassword: u.MustChangePassword,
 			LastLoginAt: u.LastLoginAt, LockedUntil: u.LockedUntil,
 			CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
-		}))
+		})
+		roles := toRoleAssignments(byUser[u.ID])
+		summary.Roles = &roles
+		items = append(items, summary)
 	}
 	return httpx.OK(w, pagination.NewOffsetPage(items, page, limit, total, "fullName", "asc"))
 }
@@ -257,7 +280,8 @@ func (h *UserHandler) get(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return apierr.Internal(err)
 	}
-	summary.Roles = toRoleAssignments(assignments)
+	roles := toRoleAssignments(assignments)
+	summary.Roles = &roles
 	return httpx.OK(w, summary)
 }
 

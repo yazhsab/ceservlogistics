@@ -104,11 +104,10 @@ type TerminalView =
 export function HubConsolePage() {
   const navigate = useNavigate();
   const { hasPermission, user } = useAuth();
-  const [facilityId, setFacilityId] = useState(
-    () =>
-      localStorage.getItem("courier.hub-facility") ??
-      user?.operatingUnitIds?.[0] ??
-      "",
+  const [facilityId, setFacilityId] = useState(() =>
+    user?.operatingUnitIds?.length === 1
+      ? (user.operatingUnitIds[0] ?? "")
+      : (localStorage.getItem("courier.hub-facility") ?? ""),
   );
   const [workspace, setWorkspace] = useState<HubWorkspace>("inbound");
   const canUseTerminal = hasPermission("portal.console");

@@ -183,27 +183,88 @@ func (b *Booker) prepareCommercial(ctx context.Context, prep *prepared) error {
 		if c.Currency != string(prep.quote.Currency) {
 			return apierr.Validation("Customs values must use the shipment currency; currency conversion is not supported.", nil)
 		}
-		result := &CustomsSummary{Declaration: *c, DeclaredValueMinor: req.DeclaredValueMinor, LineTotalsMinor: []int64{}}
-		for _, item := range c.Items {
-			country, err := b.q.GetCountryByISO2(ctx, item.CountryOfOrigin)
-			if err != nil || country.Status != "ACTIVE" {
-				return apierr.Validation("A goods country of origin is not configured or active.", nil)
-			}
-			amount := item.Quantity * item.UnitValueMinor
-			result.LineTotalsMinor = append(result.LineTotalsMinor, amount)
-			result.GoodsSubtotalMinor += amount
-		}
+		var premium int64
 		if prep.quote.Insurance != nil {
-			result.InsuranceMinor = prep.quote.Insurance.PremiumMinor
+			premium = prep.quote.Insurance.PremiumMinor
 		}
-		result.InvoiceTotalMinor = result.DeclaredValueMinor + c.FreightMinor + c.OtherChargesMinor + result.InsuranceMinor
-		if result.InvoiceTotalMinor > maxCommercialMinor {
-			return apierr.Validation("Customs invoice total exceeds the permitted amount.", nil)
+		result, err := b.customsSummary(ctx, &req, premium)
+		if err != nil {
+			return err
 		}
+
 		snapshot.Customs = result
 	}
 	prep.commercial = snapshot
 	return nil
+}
+
+// CustomsValuationPreview deliberately excludes insurance: only a full shipment
+// quote can establish that premium, eligibility and currency compatibility.
+type CustomsValuationPreview struct {
+	Currency                  string  `json:"currency"`
+	LineTotalsMinor           []int64 `json:"lineTotalsMinor"`
+	GoodsSubtotalMinor        int64   `json:"goodsSubtotalMinor"`
+	DeclaredValueMinor        int64   `json:"declaredValueMinor"`
+	TotalBeforeInsuranceMinor int64   `json:"totalBeforeInsuranceMinor"`
+}
+
+// calculateCustomsSummary accepts commercial inputs validated by validateCommercial.
+// Both standalone valuation and final booking use this same calculation.
+func calculateCustomsSummary(req *BookingRequest, premium int64) (*CustomsSummary, error) {
+	c := req.Customs
+	result := &CustomsSummary{Declaration: *c, DeclaredValueMinor: req.DeclaredValueMinor, InsuranceMinor: premium, LineTotalsMinor: []int64{}}
+	for _, item := range c.Items {
+		amount := item.Quantity * item.UnitValueMinor
+		result.LineTotalsMinor = append(result.LineTotalsMinor, amount)
+		result.GoodsSubtotalMinor += amount
+	}
+	// Check before addition to reject overflow even for a very large charge.
+	total := result.DeclaredValueMinor
+	for _, charge := range []int64{c.FreightMinor, c.OtherChargesMinor, premium} {
+		if charge < 0 || charge > maxCommercialMinor-total {
+			return nil, apierr.Validation("Customs invoice total exceeds the permitted amount.", nil)
+		}
+		total += charge
+	}
+	result.InvoiceTotalMinor = total
+	return result, nil
+}
+
+func (b *Booker) customsSummary(ctx context.Context, req *BookingRequest, premium int64) (*CustomsSummary, error) {
+	for _, item := range req.Customs.Items {
+		country, err := b.q.GetCountryByISO2(ctx, item.CountryOfOrigin)
+		if err != nil || country.Status != "ACTIVE" {
+			return nil, apierr.Validation("A goods country of origin is not configured or active.", nil)
+		}
+	}
+	return calculateCustomsSummary(req, premium)
+}
+
+func (h *Handler) previewCustoms(w http.ResponseWriter, r *http.Request) error {
+	if _, err := tenant.Require(r); err != nil {
+		return err
+	}
+	var customs CustomsDeclaration
+	if err := httpx.DecodeJSON(w, r, &customs); err != nil {
+		return err
+	}
+	req := &BookingRequest{Customs: &customs}
+	v := validate.New()
+	validateCommercial(v, req)
+	if err := v.Err(); err != nil {
+		return err
+	}
+	result, err := h.booker.customsSummary(r.Context(), req, 0)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, CustomsValuationPreview{
+		Currency:                  customs.Currency,
+		LineTotalsMinor:           result.LineTotalsMinor,
+		GoodsSubtotalMinor:        result.GoodsSubtotalMinor,
+		DeclaredValueMinor:        result.DeclaredValueMinor,
+		TotalBeforeInsuranceMinor: result.InvoiceTotalMinor,
+	})
 }
 
 func acceptInsurance(prep *prepared) error {

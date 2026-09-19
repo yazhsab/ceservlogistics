@@ -590,8 +590,8 @@ export function OperatingUnitDetailPage() {
                 : "Not configured"}
             </Detail>
             <Detail label="Users & children">
-              Assignment and child-detail APIs are not exposed in Release 1. The
-              hierarchy view remains the source for parent/child relationships.
+              View linked facilities in the hierarchy view. An administrator can
+              review staff assignments under Users.
             </Detail>
           </div>
         </Panel>
@@ -830,7 +830,7 @@ export function FranchisesPage() {
       <PageHeader
         eyebrow="Network"
         title="Franchises"
-        description="Commercial operators attached to franchise branches. Release 1 exposes identity, category, and lifecycle state."
+        description="Manage franchise operators, their linked branches, categories, and account status."
         actions={
           hasPermission("franchise.manage") ? (
             <Button variant="primary" onClick={() => setCreateOpen(true)}>
@@ -980,7 +980,7 @@ function CreateFranchiseDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Create franchise"
-      description="A franchise attaches to one active franchise branch. Financial configuration is not invented in Release 1."
+      description="Link the franchise to an active franchise branch. Commission and settlement settings are managed separately."
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>

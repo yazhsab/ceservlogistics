@@ -457,7 +457,7 @@ func (b *Booker) resolveAddress(
 	pin, err := b.geo.RequireActivePincode(ctx, addr.Pincode, country)
 	var apiError *apierr.Error
 	if errors.As(err, &apiError) && apiError.Code == apierr.CodeNotFound {
-		return nil, apierr.Validation("The postal code is not configured for the selected country.", map[string]any{"field": role + ".pincode", "countryCode": country})
+		return nil, apierr.Validation(fmt.Sprintf("The %s postal code %s is not configured for %s.", role, addr.Pincode, country), map[string]any{"field": role + ".pincode", "countryCode": country, "postalCode": addr.Pincode})
 	}
 	return pin, err
 }

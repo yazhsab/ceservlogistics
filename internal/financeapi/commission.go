@@ -65,7 +65,11 @@ func (h *Handler) createCommissionRule(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "/api/v1/commission/rules/"+rule.PublicID, rule)
+	detail, _, err := h.commission.GetRule(r.Context(), p, rule.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.Created(w, "/api/v1/commission/rules/"+rule.PublicID, ruleDetailResponse(*detail))
 }
 
 type versionRequest struct {
@@ -106,7 +110,7 @@ func (h *Handler) createRuleVersion(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", version)
+	return httpx.Created(w, "", ruleVersionResponse(*version))
 }
 
 func (h *Handler) listCommissionRules(w http.ResponseWriter, r *http.Request) error {
@@ -120,7 +124,11 @@ func (h *Handler) listCommissionRules(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows, "total": total})
+	data := make([]commissionRuleResponse, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, ruleListResponse(row))
+	}
+	return httpx.OK(w, map[string]any{"data": data, "total": total})
 }
 
 func (h *Handler) getCommissionRule(w http.ResponseWriter, r *http.Request) error {
@@ -136,7 +144,11 @@ func (h *Handler) getCommissionRule(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"rule": rule, "versions": versions})
+	data := make([]commissionVersionResponse, 0, len(versions))
+	for _, version := range versions {
+		data = append(data, ruleVersionResponse(version))
+	}
+	return httpx.OK(w, map[string]any{"rule": ruleDetailResponse(*rule), "versions": data})
 }
 
 type simulateRequest struct {
@@ -216,7 +228,11 @@ func (h *Handler) listCalculations(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	data := make([]commissionCalculationResponse, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, calculationListResponse(row))
+	}
+	return httpx.OK(w, map[string]any{"data": data})
 }
 
 func (h *Handler) getCalculation(w http.ResponseWriter, r *http.Request) error {
@@ -232,7 +248,7 @@ func (h *Handler) getCalculation(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, calc)
+	return httpx.OK(w, calculationDetailResponse(*calc))
 }
 
 func (h *Handler) postCommission(w http.ResponseWriter, r *http.Request) error {
@@ -248,7 +264,11 @@ func (h *Handler) postCommission(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, calc)
+	detail, err := h.commission.GetCalculation(r.Context(), p, calc.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, calculationDetailResponse(*detail))
 }
 
 func (h *Handler) reverseCommission(w http.ResponseWriter, r *http.Request) error {
@@ -268,5 +288,9 @@ func (h *Handler) reverseCommission(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, calc)
+	detail, err := h.commission.GetCalculation(r.Context(), p, calc.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, calculationDetailResponse(*detail))
 }

@@ -444,11 +444,22 @@ export function TripDetailPage() {
     enabled: Boolean(tripId),
   });
   const action = useMutation({
-    mutationFn: ({ action, body }: { action: string; body?: unknown }) =>
+    mutationFn: ({
+      action,
+      body,
+      operatingUnitId,
+    }: {
+      action: string;
+      body?: unknown;
+      operatingUnitId?: string;
+    }) =>
       apiRequest<Trip>(`/api/v1/trips/${tripId}/${action}`, {
         method: "POST",
         body: body ?? {},
-        headers: operationalHeaders(`trip-${action}`),
+        headers: {
+          ...operationalHeaders(`trip-${action}`),
+          ...(operatingUnitId ? { "X-Operating-Unit": operatingUnitId } : {}),
+        },
       }),
     onSuccess: (trip, variables) => {
       void client.invalidateQueries({ queryKey: ["trip", tripId] });
@@ -728,13 +739,17 @@ export function TripDetailPage() {
         onOpenChange={setManifestOpen}
       />
       <MovementDialog
+        key={movementOpen ?? "closed"}
+        trip={trip}
         action={movementOpen}
         open={Boolean(movementOpen)}
         onOpenChange={(open) => !open && setMovementOpen(undefined)}
-        onSubmit={(body) =>
-          movementOpen && action.mutate({ action: movementOpen, body })
+        onSubmit={(body, operatingUnitId) =>
+          movementOpen &&
+          action.mutate({ action: movementOpen, body, operatingUnitId })
         }
         pending={action.isPending}
+        error={action.error}
       />
     </>
   );
@@ -928,29 +943,61 @@ function AttachManifestDialog({
 }
 
 const movementSchema = z.object({
+  operatingUnitId: z.string().optional(),
   odometerKm: optionalNonnegativeInteger,
   sealNumber: z.string().optional(),
   legSequence: optionalPositiveInteger,
   reason: z.string().optional(),
 });
 function MovementDialog({
+  trip,
   action,
   open,
   onOpenChange,
   onSubmit,
   pending,
+  error,
 }: {
+  trip: Trip;
   action?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (body: unknown) => void;
+  onSubmit: (body: unknown, operatingUnitId?: string) => void;
   pending: boolean;
+  error: unknown;
 }) {
+  const { user } = useAuth();
+  const destinations = Array.from(
+    new Map(
+      [
+        trip.destination,
+        ...(trip.legs ?? []).map((leg) => leg.destination),
+      ].flatMap((unit) => (unit?.id ? [[unit.id, unit] as const] : [])),
+    ).values(),
+  );
+  const scopedUnit =
+    user?.operatingUnitIds?.length === 1 ? user.operatingUnitIds[0] : "";
   const form = useForm<
     z.input<typeof movementSchema>,
     unknown,
     z.output<typeof movementSchema>
-  >({ resolver: zodResolver(movementSchema) });
+  >({
+    resolver: zodResolver(movementSchema),
+    defaultValues: {
+      operatingUnitId: destinations.some((unit) => unit.id === scopedUnit)
+        ? scopedUnit
+        : "",
+    },
+  });
+  const submit = form.handleSubmit(({ operatingUnitId, ...body }) => {
+    if (action === "arrive" && !operatingUnitId) {
+      form.setError("operatingUnitId", {
+        message: "Choose the facility where the vehicle has arrived.",
+      });
+      return;
+    }
+    onSubmit(body, action === "arrive" ? operatingUnitId : undefined);
+  });
   return (
     <Dialog
       open={open}
@@ -969,7 +1016,7 @@ function MovementDialog({
           <Button
             variant={action === "cancel" ? "danger" : "primary"}
             disabled={pending}
-            onClick={() => void form.handleSubmit(onSubmit)()}
+            onClick={() => void submit()}
           >
             Confirm {action}
           </Button>
@@ -977,6 +1024,25 @@ function MovementDialog({
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        {action === "arrive" ? (
+          <Field
+            className="sm:col-span-2"
+            label="Arrival facility"
+            htmlFor="move-facility"
+            required
+            error={form.formState.errors.operatingUnitId?.message}
+            hint="Choose the actual arrival stop. Your access is checked when you confirm."
+          >
+            <Select id="move-facility" {...form.register("operatingUnitId")}>
+              <option value="">Choose arrival facility</option>
+              {destinations.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name ?? unit.code ?? unit.id}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
         {["depart", "arrive"].includes(action ?? "") ? (
           <Field label="Odometer (km)" htmlFor="move-odometer">
             <Input
@@ -1013,6 +1079,7 @@ function MovementDialog({
           </Field>
         ) : null}
       </div>
+      {error ? <ErrorState error={error} /> : null}
     </Dialog>
   );
 }

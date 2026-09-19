@@ -51,6 +51,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { signedInHome } from "../auth/navigation";
 import { Button, Dialog, Input } from "../components/ui";
 import { cn, initials } from "../lib/utils";
 
@@ -391,7 +392,23 @@ export function AppShell() {
 
   const visibleNavigation = useMemo(
     () =>
-      navigation
+      [
+        ...(user?.portal?.franchise && hasPermission("portal.franchise")
+          ? [
+              {
+                label: "Workspace",
+                items: [
+                  {
+                    label: "Franchise dashboard",
+                    to: "/portal/franchise",
+                    icon: Building2,
+                  },
+                ],
+              },
+            ]
+          : []),
+        ...navigation,
+      ]
         .map((group) => ({
           ...group,
           items: group.items.filter((item) =>
@@ -401,7 +418,7 @@ export function AppShell() {
           ),
         }))
         .filter((group) => group.items.length > 0),
-    [hasPermission],
+    [hasPermission, user?.portal?.franchise],
   );
 
   const commandItems = visibleNavigation
@@ -466,7 +483,7 @@ export function AppShell() {
       >
         <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
           <Link
-            to="/shipments"
+            to={signedInHome(user)}
             className="flex min-w-0 flex-1 items-center gap-3"
             aria-label="Ceserve home"
           >

@@ -13,7 +13,9 @@ import {
   type InvoiceListResponse,
   type InvoicePaymentRequest,
   type InvoiceResult,
+  type InvoiceCreditNotePage,
 } from "../api/client";
+import { CursorPager } from "../components/operations";
 import {
   FinancialStatus,
   FinancialSummary,
@@ -209,10 +211,10 @@ export function InvoicesPage() {
           ) : undefined
         }
       />
-      <InlineNotice title="Release 3 billing boundary">
-        Bulk billing runs, credit/debit-note registers, server-paginated invoice
-        lines, and PDF generation are not exposed in the contract. This screen
-        does not invent those APIs.
+      <InlineNotice title="Available billing features">
+        Create and review individual invoices here. Bulk billing runs,
+        credit/debit-note registers, and invoice PDF downloads are not available
+        in this workspace.
       </InlineNotice>
       <Panel className="mt-4">
         <FilterBar>
@@ -332,10 +334,12 @@ export function InvoicesPage() {
 
 function CreditNoteDialog({
   invoice,
+  initialNote,
   open,
   onOpenChange,
 }: {
   invoice: Invoice;
+  initialNote?: CreditNote;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -348,7 +352,7 @@ function CreditNoteDialog({
   const [reason, setReason] = useState("");
   const [amount, setAmount] = useState("");
   const [tax, setTax] = useState("");
-  const [note, setNote] = useState<CreditNote>();
+  const [note, setNote] = useState<CreditNote | undefined>(initialNote);
   const create = useMutation({
     mutationFn: () => {
       const body: CreditNoteRequest = {
@@ -365,7 +369,12 @@ function CreditNoteDialog({
         body,
       });
     },
-    onSuccess: setNote,
+    onSuccess: (value) => {
+      setNote(value);
+      void queryClient.invalidateQueries({
+        queryKey: ["invoice-notes", invoice.id],
+      });
+    },
   });
   const issue = useMutation({
     mutationFn: () =>
@@ -375,6 +384,9 @@ function CreditNoteDialog({
     onSuccess: (value) => {
       setNote(value);
       void queryClient.invalidateQueries({ queryKey: ["invoice", invoice.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["invoice-notes", invoice.id],
+      });
     },
   });
   return (
@@ -387,7 +399,9 @@ function CreditNoteDialog({
         note ? (
           <>
             <Button onClick={() => onOpenChange(false)}>Close</Button>
-            {note.status === "DRAFT" && hasPermission("creditnote.approve") ? (
+            {initialNote &&
+            note.status === "DRAFT" &&
+            hasPermission("creditnote.approve") ? (
               <Button
                 variant="danger"
                 loading={issue.isPending}
@@ -424,6 +438,13 @@ function CreditNoteDialog({
               ? "Nothing has posted yet."
               : "The note is posted and immutable."}
           </InlineNotice>
+          <p className="text-sm">{note.reason}</p>
+          {note.status === "DRAFT" ? (
+            <p className="text-sm text-slate-600">
+              A different finance user must review and issue this note from the
+              invoice's Credit and debit notes section.
+            </p>
+          ) : null}
           {issue.error ? <ErrorState error={issue.error} /> : null}
         </div>
       ) : (
@@ -510,6 +531,10 @@ export function InvoiceDetailPage() {
   const [issueOpen, setIssueOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<CreditNote>();
+  const [noteCursors, setNoteCursors] = useState<(string | undefined)[]>([
+    undefined,
+  ]);
   const [linePage, setLinePage] = useState(1);
   const [amount, setAmount] = useState("");
   const [mode, setMode] =
@@ -519,6 +544,14 @@ export function InvoiceDetailPage() {
     queryKey: ["invoice", invoiceId],
     queryFn: () => apiRequest<InvoiceResult>(`/api/v1/invoices/${invoiceId}`),
     enabled: Boolean(invoiceId),
+  });
+  const notes = useQuery({
+    queryKey: ["invoice-notes", invoiceId, noteCursors.at(-1)],
+    queryFn: () =>
+      apiRequest<InvoiceCreditNotePage>(
+        `/api/v1/invoices/${invoiceId}/credit-notes${queryString({ limit: 25, cursor: noteCursors.at(-1) })}`,
+      ),
+    enabled: Boolean(invoiceId) && Boolean(query.data?.invoice),
   });
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["invoice", invoiceId] });
@@ -599,13 +632,18 @@ export function InvoiceDetailPage() {
               </Button>
             ) : null}
             {issued && hasPermission("creditnote.create") ? (
-              <Button onClick={() => setNoteOpen(true)}>
+              <Button
+                onClick={() => {
+                  setSelectedNote(undefined);
+                  setNoteOpen(true);
+                }}
+              >
                 <FileMinus2 className="h-4 w-4" /> Credit / debit note
               </Button>
             ) : null}
             <Button
               disabled
-              title="PDF rendering is not available in Release 3"
+              title="Invoice PDF downloads are not available yet"
             >
               <Printer className="h-4 w-4" /> PDF unavailable
             </Button>
@@ -741,6 +779,75 @@ export function InvoiceDetailPage() {
           </Panel>
         </div>
       </div>
+      <Panel className="mt-4">
+        <PanelHeader
+          title="Credit and debit notes"
+          description="Review drafts raised by another finance user. Issued notes remain visible and cannot be edited."
+        />
+        {notes.isPending ? (
+          <LoadingState label="Loading invoice notes" />
+        ) : notes.error ? (
+          <ErrorState error={notes.error} retry={() => void notes.refetch()} />
+        ) : notes.data?.data?.length ? (
+          <>
+            <DataTable label="Invoice credit and debit notes">
+              <thead>
+                <tr>
+                  <TableHead>Note</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
+                </tr>
+              </thead>
+              <tbody>
+                {notes.data.data.map((note) => (
+                  <tr key={note.id}>
+                    <TableCell>{note.noteNumber}</TableCell>
+                    <TableCell>{titleCase(note.noteType ?? "")}</TableCell>
+                    <TableCell>{note.reason}</TableCell>
+                    <TableCell>
+                      <Money
+                        amountMinor={note.totalMinor}
+                        currency={note.currency}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <FinancialStatus status={note.status} />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedNote(note);
+                          setNoteOpen(true);
+                        }}
+                      >
+                        Review note
+                      </Button>
+                    </TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+            <CursorPager
+              page={noteCursors.length}
+              hasMore={notes.data.pagination?.hasMore}
+              nextCursor={notes.data.pagination?.nextCursor}
+              count={notes.data.data.length}
+              noun="notes"
+              onPrevious={() => setNoteCursors((items) => items.slice(0, -1))}
+              onNext={(cursor) => setNoteCursors((items) => [...items, cursor])}
+            />
+          </>
+        ) : (
+          <EmptyState
+            title="No credit or debit notes"
+            description="Drafts and issued corrections for this invoice appear here."
+          />
+        )}
+      </Panel>
       <ConfirmAction
         open={issueOpen}
         onOpenChange={setIssueOpen}
@@ -825,7 +932,9 @@ export function InvoiceDetailPage() {
         </div>
       </Dialog>
       <CreditNoteDialog
+        key={`${selectedNote?.id ?? "new"}-${noteOpen}`}
         invoice={invoice}
+        initialNote={selectedNote}
         open={noteOpen}
         onOpenChange={setNoteOpen}
       />

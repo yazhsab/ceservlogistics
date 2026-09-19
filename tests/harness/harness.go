@@ -161,6 +161,10 @@ func Start(t *testing.T) *Env {
 
 func setTestEnv(t *testing.T, dsn, redisURL string) {
 	t.Helper()
+	rateLimitEnabled := "false"
+	if os.Getenv("TEST_RATE_LIMIT_ENABLED") == "true" {
+		rateLimitEnabled = "true"
+	}
 	vars := map[string]string{
 		"APP_ENV":      config.EnvTest,
 		"DATABASE_URL": dsn,
@@ -174,7 +178,7 @@ func setTestEnv(t *testing.T, dsn, redisURL string) {
 		"ARGON2_TIME":          "1",
 		"ARGON2_MEMORY_KIB":    "16384",
 		"DATABASE_MAX_CONNS":   "20",
-		"RATE_LIMIT_ENABLED":   "false",
+		"RATE_LIMIT_ENABLED":   rateLimitEnabled,
 		"REDIS_REQUIRED":       "true",
 		"CORS_ALLOWED_ORIGINS": "http://localhost:3000",
 	}

@@ -45,6 +45,7 @@ func NewHandler(b *Booker, idem *idempotency.Executor, maxPackages int) *Handler
 func (h *Handler) Routes(r chi.Router) {
 	r.With(auth.RequirePermission("shipment.create")).Post("/", httpx.Wrap(h.create))
 	r.With(auth.RequirePermission("shipment.create")).Post("/preview", httpx.Wrap(h.preview))
+	r.With(auth.RequirePermission("shipment.create")).Post("/customs/preview", httpx.Wrap(h.previewCustoms))
 	r.With(auth.RequirePermission("shipment.read")).Get("/", httpx.Wrap(h.list))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}", httpx.Wrap(h.get))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}/events", httpx.Wrap(h.events))

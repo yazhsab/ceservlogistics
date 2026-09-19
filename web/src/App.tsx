@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
+import { signedInHome } from "./auth/navigation";
 import { ErrorState, LoadingState, PermissionDenied } from "./components/ui";
 import { AppShell } from "./layout/AppShell";
 import {
@@ -523,12 +524,12 @@ export default function App() {
         </Route>
         <Route
           element={
-            <SignedIn requirePasswordChanged>
+            <SignedIn requirePasswordChanged staffWorkspace>
               <AppShell />
             </SignedIn>
           }
         >
-          <Route index element={<Navigate to="/shipments" replace />} />
+          <Route index element={<SignedInHome />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route
             path="shipments"
@@ -1207,9 +1208,11 @@ export default function App() {
 function SignedIn({
   children,
   requirePasswordChanged = false,
+  staffWorkspace = false,
 }: {
   children: ReactNode;
   requirePasswordChanged?: boolean;
+  staffWorkspace?: boolean;
 }) {
   const { user, isRestoring } = useAuth();
   const location = useLocation();
@@ -1223,7 +1226,13 @@ function SignedIn({
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (requirePasswordChanged && user.mustChangePassword)
     return <Navigate to="/change-password" replace />;
+  if (staffWorkspace && user.portal?.isCustomerUser)
+    return <Navigate to="/portal/customer" replace />;
   return children;
+}
+function SignedInHome() {
+  const { user } = useAuth();
+  return <Navigate to={signedInHome(user)} replace />;
 }
 function Permission({
   permission,

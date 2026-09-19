@@ -249,8 +249,12 @@ func (h *Handler) generateSettlement(w http.ResponseWriter, r *http.Request) err
 	}
 	// A replayed generation returns 200 rather than 201: nothing was created,
 	// and a client retrying should not believe it made a second statement.
+	header, err := h.settlementHeader(r, res.Settlement.PublicID)
+	if err != nil {
+		return err
+	}
 	payload := map[string]any{
-		"settlement": res.Settlement, "lines": res.Lines, "replayed": res.Replayed,
+		"settlement": header, "lines": projectRows(res.Lines, settlementLineResponse), "replayed": res.Replayed,
 	}
 	if res.Replayed {
 		return httpx.OK(w, payload)
@@ -271,7 +275,11 @@ func (h *Handler) recalculateSettlement(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"settlement": res.Settlement, "lines": res.Lines})
+	header, err := h.settlementHeader(r, res.Settlement.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, map[string]any{"settlement": header, "lines": projectRows(res.Lines, settlementLineResponse)})
 }
 
 func (h *Handler) getSettlement(w http.ResponseWriter, r *http.Request) error {
@@ -287,7 +295,7 @@ func (h *Handler) getSettlement(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, res)
+	return httpx.OK(w, map[string]any{"settlement": settlementDetailResponse(res.Settlement), "lines": projectRows(res.Lines, settlementLineResponse), "byCategory": projectRows(res.ByCategory, settlementCategoryResponse), "approvals": projectRows(res.Approvals, settlementApprovalResponse), "payments": projectRows(res.Payments, settlementPaymentListResponse)})
 }
 
 func (h *Handler) listSettlements(w http.ResponseWriter, r *http.Request) error {
@@ -301,7 +309,7 @@ func (h *Handler) listSettlements(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	return httpx.OK(w, map[string]any{"data": projectRows(rows, settlementListResponse)})
 }
 
 type commentRequest struct {
@@ -325,7 +333,11 @@ func (h *Handler) submitSettlement(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, stl)
+	header, err := h.settlementHeader(r, stl.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, header)
 }
 
 func (h *Handler) approveSettlement(w http.ResponseWriter, r *http.Request) error {
@@ -345,7 +357,11 @@ func (h *Handler) approveSettlement(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, stl)
+	header, err := h.settlementHeader(r, stl.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, header)
 }
 
 type settlementPaymentRequest struct {
@@ -383,7 +399,11 @@ func (h *Handler) paySettlement(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", map[string]any{"payment": payment, "settlement": stl})
+	header, err := h.settlementHeader(r, stl.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.Created(w, "", map[string]any{"payment": settlementPaymentResponse(*payment), "settlement": header})
 }
 
 func (h *Handler) cancelSettlement(w http.ResponseWriter, r *http.Request) error {
@@ -403,5 +423,9 @@ func (h *Handler) cancelSettlement(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, stl)
+	header, err := h.settlementHeader(r, stl.PublicID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, header)
 }

@@ -124,7 +124,9 @@ export default function FranchiseCollectionsPage() {
         />
         <form
           className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-5"
-          onSubmit={handleSubmit((v) => mutation.mutate(v))}
+          onSubmit={(event) =>
+            void handleSubmit((v) => mutation.mutate(v))(event)
+          }
         >
           <Field
             label="Shipment ID"

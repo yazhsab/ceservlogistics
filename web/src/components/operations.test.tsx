@@ -17,6 +17,15 @@ function ScannerHarness({ onScan }: { onScan: (value: string) => void }) {
 afterEach(cleanup);
 
 describe("operational scanner components", () => {
+  it("restores focus only after the scanner is enabled following a request", () => {
+    const props = { value: "TEST-1", onChange: vi.fn(), onScan: vi.fn() };
+    const { rerender } = render(<ScannerInput {...props} busy />);
+    const input = screen.getByLabelText("Scan barcode");
+    expect(input).toBeDisabled();
+    rerender(<ScannerInput {...props} busy={false} />);
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+  });
   it("auto-focuses, normalizes, and submits keyboard scanner input", async () => {
     const user = userEvent.setup();
     const onScan = vi.fn();

@@ -307,10 +307,9 @@ export function CommissionRulesPage() {
           </>
         }
       />
-      <InlineNotice title="Scheme administration boundary">
-        Rules expose their scheme code, but Release 3 has no scheme list/detail
-        endpoint. This register therefore does not fabricate editable scheme
-        records.
+      <InlineNotice title="Commission schemes">
+        Each rule shows its scheme code. Creating or editing schemes is not
+        available on this page.
       </InlineNotice>
       <Panel className="mt-4">
         <FilterBar>

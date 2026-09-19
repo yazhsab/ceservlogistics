@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import {
   useFieldArray,
   useWatch,
@@ -154,24 +154,28 @@ export function commercialRequest(
       transportation: party(values.billing.transportation),
       dutyTax: party(values.billing.dutyTax),
     },
-    customs: c.enabled
-      ? {
-          invoiceNumber: c.invoiceNumber || undefined,
-          declarationStatement: c.declarationStatement || undefined,
-          reasonForExport: c.reasonForExport,
-          termsOfSale: c.termsOfSale || undefined,
-          currency: c.currency,
-          discountMinor: toMinorUnits(c.discount),
-          freightMinor: toMinorUnits(c.freight),
-          otherChargesMinor: toMinorUnits(c.otherCharges),
-          items: c.items.map(({ unitValue, ...item }) => ({
-            ...item,
-            unitValueMinor: toMinorUnits(unitValue) ?? 0,
-          })),
-        }
-      : undefined,
+    customs: c.enabled ? customsRequest(c) : undefined,
   };
 }
+function customsRequest(
+  c: BookingValues["customs"],
+): components["schemas"]["CustomsDeclaration"] {
+  return {
+    invoiceNumber: c.invoiceNumber || undefined,
+    declarationStatement: c.declarationStatement || undefined,
+    reasonForExport: c.reasonForExport,
+    termsOfSale: c.termsOfSale || undefined,
+    currency: c.currency,
+    discountMinor: toMinorUnits(c.discount),
+    freightMinor: toMinorUnits(c.freight),
+    otherChargesMinor: toMinorUnits(c.otherCharges),
+    items: c.items.map(({ unitValue, ...item }) => ({
+      ...item,
+      unitValueMinor: toMinorUnits(unitValue) ?? 0,
+    })),
+  };
+}
+
 export function useCountries() {
   return useQuery({
     queryKey: ["geography-countries"],
@@ -301,15 +305,58 @@ function BillingPartyField({
     </div>
   );
 }
-export function CustomsFields({ control, register, errors }: Props) {
-  const enabled = useWatch({ control, name: "customs.enabled" });
+export function CustomsFields({
+  control,
+  register,
+  errors,
+  confirmedCustoms,
+}: Props & {
+  confirmedCustoms?: components["schemas"]["CustomsSummary"];
+}) {
+  const customs = useWatch({ control, name: "customs" });
+  const insuranceRequired = useWatch({ control, name: "insuranceRequired" });
+  const enabled = customs.enabled;
+  const parsed = customsFormSchema.safeParse(customs);
+  const serialized =
+    enabled && parsed.success
+      ? JSON.stringify(customsRequest(parsed.data))
+      : "";
+  const [settledInput, setSettledInput] = useState("");
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettledInput(serialized), 400);
+    return () => window.clearTimeout(timer);
+  }, [serialized]);
+  const valuation = useQuery({
+    queryKey: ["customs-valuation", settledInput],
+    queryFn: ({ signal }) =>
+      apiRequest<components["schemas"]["CustomsValuationPreview"]>(
+        "/api/v1/shipments/customs/preview",
+        {
+          method: "POST",
+          body: JSON.parse(
+            settledInput,
+          ) as components["schemas"]["CustomsDeclaration"],
+          signal,
+        },
+      ),
+    enabled: Boolean(serialized) && serialized === settledInput,
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const current =
+    serialized && serialized === settledInput ? valuation.data : undefined;
+  const calculating =
+    Boolean(serialized) &&
+    (serialized !== settledInput || valuation.isFetching);
+
   const items = useFieldArray({ control, name: "customs.items" });
   const countries = useCountries();
   return (
     <Panel id="customs" className="scroll-mt-32">
       <PanelHeader
         title="6. Customs declaration"
-        description="Enter goods and valuation charges for the commercial invoice."
+        description="Enter each item's value and quantity. Goods totals update automatically; insurance is added after shipment preview."
       />
       <div className="space-y-4 p-4">
         <label className="flex min-h-11 items-center gap-3 text-sm font-medium">
@@ -424,6 +471,7 @@ export function CustomsFields({ control, register, errors }: Props) {
                   <Field
                     label="Value per unit"
                     htmlFor={`goods-${i}-value`}
+                    hint="Enter the value of one item from the customer's invoice."
                     required
                     error={errors.customs?.items?.[i]?.unitValue?.message}
                   >
@@ -465,6 +513,22 @@ export function CustomsFields({ control, register, errors }: Props) {
                       {...register(`customs.items.${i}.hsCode`)}
                     />
                   </Field>
+                  <div className="rounded border bg-muted px-3 py-2 text-sm">
+                    <span className="block text-xs text-muted-foreground">
+                      Line total
+                    </span>
+                    <output
+                      aria-label={`Goods line ${i + 1} total`}
+                      className="font-semibold"
+                    >
+                      {current
+                        ? formatMoney(
+                            current.lineTotalsMinor[i],
+                            current.currency,
+                          )
+                        : "—"}
+                    </output>
+                  </div>
                   <div className="flex items-end">
                     <Button
                       type="button"
@@ -498,6 +562,11 @@ export function CustomsFields({ control, register, errors }: Props) {
                   key={name}
                   label={label}
                   htmlFor={`customs-${name}`}
+                  hint={
+                    name === "freight"
+                      ? "Enter the freight value for this commercial invoice; it is separate from the shipment's transport quote."
+                      : undefined
+                  }
                   error={errors.customs?.[name]?.message}
                 >
                   <Input
@@ -508,6 +577,91 @@ export function CustomsFields({ control, register, errors }: Props) {
                 </Field>
               ))}
             </div>
+            <section
+              aria-label="Customs valuation"
+              className="rounded-md border p-3"
+            >
+              <h3 className="text-sm font-semibold">Customs valuation</h3>
+              {!serialized ? (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Complete the goods lines and enter valid charges to calculate
+                  totals automatically.
+                </p>
+              ) : calculating ? (
+                <p role="status" className="mt-2 text-sm text-muted-foreground">
+                  Calculating customs totals…
+                </p>
+              ) : valuation.error ? (
+                <div role="alert" className="mt-2 text-sm text-danger">
+                  <p>
+                    Customs totals could not be calculated:{" "}
+                    {valuation.error.message}
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => void valuation.refetch()}
+                  >
+                    Retry customs calculation
+                  </Button>
+                </div>
+              ) : current ? (
+                <dl className="mt-3 grid gap-2 text-sm">
+                  {(
+                    [
+                      ["Goods subtotal", current.goodsSubtotalMinor],
+                      [
+                        "Declared goods value after discount",
+                        current.declaredValueMinor,
+                      ],
+                      [
+                        "Total before insurance",
+                        current.totalBeforeInsuranceMinor,
+                      ],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"
+                    >
+                      <dt>{label}</dt>
+                      <dd className="font-semibold">
+                        {formatMoney(value, current.currency)}
+                      </dd>
+                    </div>
+                  ))}
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <dt>Insurance</dt>
+                    <dd>
+                      {confirmedCustoms
+                        ? formatMoney(
+                            confirmedCustoms.insuranceMinor,
+                            customs.currency,
+                          )
+                        : insuranceRequired
+                          ? "Awaiting shipment preview"
+                          : "Not requested"}
+                    </dd>
+                  </div>
+                  {confirmedCustoms ? (
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t pt-2 font-semibold">
+                      <dt>Customs invoice total</dt>
+                      <dd>
+                        {formatMoney(
+                          confirmedCustoms.invoiceTotalMinor,
+                          customs.currency,
+                        )}
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Calculated by the server. A successful shipment preview verifies
+                the final invoice total, currency and any insurance premium.
+                This valuation does not confirm serviceability or book a
+                shipment.
+              </p>
+            </section>
             <Field
               label="Declaration statement"
               htmlFor="customs-statement"
@@ -520,9 +674,9 @@ export function CustomsFields({ control, register, errors }: Props) {
               />
             </Field>
             <p className="text-xs text-muted-foreground">
-              Preview shows the goods subtotal, discount, declared value,
-              insurance and invoice total. Customs freight and other charges
-              describe invoice value; transportation is priced separately.
+              Unit values come from the customer’s invoice. Customs freight and
+              other charges describe invoice value; transportation is priced
+              separately.
             </p>
           </>
         ) : null}

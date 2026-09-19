@@ -34,6 +34,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../components/ToastProvider";
+import { CODCollectionForm } from "../components/CODCollectionForm";
 import {
   CursorPager,
   EntityLink,
@@ -1316,24 +1317,39 @@ export function DeliveryStopPage() {
         </Panel>
       </>
     );
-  if (result)
+  const delivered =
+    result?.outcome === "DELIVERED" || stop.status === "DELIVERED";
+  if (result || delivered)
     return (
       <div className="mx-auto max-w-2xl">
         <Panel className="overflow-hidden">
           <div
-            className={`p-6 text-center ${result.outcome === "DELIVERED" ? "bg-emerald-950 text-white" : "bg-amber-50 text-amber-950"}`}
+            className={`p-6 text-center ${delivered ? "bg-emerald-950 text-white" : "bg-amber-50 text-amber-950"}`}
           >
             <CheckCircle2 aria-hidden className="mx-auto h-12 w-12" />
             <h1 className="mt-3 text-2xl font-bold">
-              {result.outcome === "DELIVERED"
-                ? "Delivery completed"
-                : "Attempt recorded"}
+              {delivered ? "Delivery completed" : "Attempt recorded"}
             </h1>
-            <p className="mt-1 font-mono">{result.awb}</p>
+            <p className="mt-1 font-mono">{result?.awb ?? stop.awb}</p>
           </div>
           <div className="space-y-3 p-5">
-            <p className="text-sm text-slate-600">{result.nextAction}</p>
-            {result.ndrCaseId ? (
+            <p className="text-sm text-slate-600">
+              {result?.nextAction ??
+                "Delivery has already been recorded. You can submit proof of delivery below."}
+            </p>
+            {delivered &&
+            (result?.codCollectedMinor ?? stop.codCollectedMinor ?? 0) > 0 &&
+            stop.shipmentId &&
+            hasPermission("cod.collect") ? (
+              <CODCollectionForm
+                shipmentId={stop.shipmentId}
+                amountMinor={
+                  result?.codCollectedMinor ?? stop.codCollectedMinor ?? 0
+                }
+                currency={result?.currency ?? stop.currency}
+              />
+            ) : null}
+            {result?.ndrCaseId ? (
               <Button
                 className="w-full"
                 onClick={() =>
@@ -1343,7 +1359,7 @@ export function DeliveryStopPage() {
                 Open NDR case
               </Button>
             ) : null}
-            {result.outcome === "DELIVERED" ? (
+            {delivered ? (
               <Button
                 className="w-full"
                 variant="primary"

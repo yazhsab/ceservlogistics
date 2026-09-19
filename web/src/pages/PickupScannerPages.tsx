@@ -57,6 +57,7 @@ import {
   ErrorState,
   Field,
   Input,
+  InlineNotice,
   LoadingState,
   PageHeader,
   Panel,
@@ -1575,7 +1576,7 @@ function playTone(outcome?: string) {
 }
 
 export function ScannerConsolePage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const availableModes = useMemo(
     () => scanModes.filter((mode) => hasPermission(mode.permission)),
     [hasPermission],
@@ -1583,8 +1584,10 @@ export function ScannerConsolePage() {
   const [mode, setMode] = useState<ScanType>(
     availableModes[0]?.type ?? "RECEIVE",
   );
-  const [facilityId, setFacilityId] = useState(
-    () => localStorage.getItem("courier.scan-facility") ?? "",
+  const [facilityId, setFacilityId] = useState(() =>
+    user?.operatingUnitIds?.length === 1
+      ? (user.operatingUnitIds[0] ?? "")
+      : (localStorage.getItem("courier.scan-facility") ?? ""),
   );
   const [barcode, setBarcode] = useState("");
   const [reason, setReason] = useState("");
@@ -1630,7 +1633,6 @@ export function ScannerConsolePage() {
         description: error instanceof Error ? error.message : undefined,
       });
     },
-    onSettled: () => window.setTimeout(() => scannerRef.current?.focus(), 0),
   });
   useEffect(() => {
     localStorage.setItem("courier.scan-facility", facilityId);
@@ -1749,16 +1751,29 @@ export function ScannerConsolePage() {
                 />
               </Field>
             ) : null}
-            <ScannerInput
-              ref={scannerRef}
-              value={barcode}
-              onChange={setBarcode}
-              onScan={(value) => mutation.mutate(value)}
-              busy={mutation.isPending}
-              label={`${titleCase(mode)} scan`}
-              hint={`Mode ${titleCase(mode)} · Enter submits · field refocuses after every response`}
-            />
-            <ScanFeedback result={session[0]} />
+            {availableModes.length ? (
+              <ScannerInput
+                ref={scannerRef}
+                value={barcode}
+                onChange={setBarcode}
+                onScan={(value) => mutation.mutate(value)}
+                busy={mutation.isPending}
+                label={`${titleCase(mode)} scan`}
+                hint={`Mode ${titleCase(mode)} · Enter submits · field refocuses after every response`}
+              />
+            ) : (
+              <InlineNotice title="Read-only scan history">
+                Your role can view recorded scans but cannot submit a scan.
+              </InlineNotice>
+            )}
+            {availableModes.length && mutation.error ? (
+              <ErrorState
+                error={mutation.error}
+                title="Scan could not be submitted"
+              />
+            ) : availableModes.length ? (
+              <ScanFeedback result={session[0]} />
+            ) : null}
           </div>
         </Panel>
         <Panel>

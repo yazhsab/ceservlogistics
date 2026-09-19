@@ -153,11 +153,10 @@ export function CODControlCenterPage() {
           ]}
         />
       )}
-      <InlineNotice title="Control-centre queue coverage">
-        Release 3 exposes authoritative obligations and summary counts, but not
-        list endpoints for pending transfers, reconciliation records,
-        remittances, adjustments, or disputes. Those queues are not fabricated
-        from mutation responses.
+      <InlineNotice title="Available COD records">
+        This page lists COD obligations and summary totals. Separate registers
+        for transfers, reconciliations, remittances, adjustments, and disputes
+        are not available here.
       </InlineNotice>
       <Panel className="mt-4">
         <FilterBar>

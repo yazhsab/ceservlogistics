@@ -133,7 +133,7 @@ function GenerateSettlementDialog({
         >
           {result.replayed
             ? "Nothing new was created. The existing period statement is shown below."
-            : "The backend generated the period statement without a browser-calculated total."}
+            : "The period statement is ready. Open it to review the totals and source records."}
           <div className="mt-3">
             <Link
               className="font-semibold underline"
@@ -321,9 +321,11 @@ export function SettlementsPage() {
                       showPositiveSign
                     />
                     <span className="block text-xs text-slate-500">
-                      {(row.netAmountMinor ?? 0) >= 0
+                      {(row.netAmountMinor ?? 0) > 0
                         ? "Head Office pays Franchise"
-                        : "Franchise pays Head Office"}
+                        : (row.netAmountMinor ?? 0) < 0
+                          ? "Franchise pays Head Office"
+                          : "No payment due"}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -470,6 +472,9 @@ export function SettlementDetailPage() {
         ].includes(line.category ?? ""),
     ),
     cod: lines.filter((line) => line.category === "COD_LIABILITY"),
+    collections: lines.filter(
+      (line) => line.category === "CUSTOMER_COLLECTION",
+    ),
     charges: lines.filter((line) =>
       ["CHARGE", "PENALTY", "TAX", "WITHHOLDING"].includes(line.category ?? ""),
     ),
@@ -577,6 +582,7 @@ export function SettlementDetailPage() {
               </Button>
             ) : null}
             {["APPROVED", "PARTIALLY_PAID"].includes(settlement.status ?? "") &&
+            direction !== "NO_PAYMENT_DUE" &&
             hasPermission("settlement.pay") ? (
               <Button variant="primary" onClick={() => setPayOpen(true)}>
                 Record payment
@@ -606,6 +612,7 @@ export function SettlementDetailPage() {
             "summary",
             "commission",
             "cod",
+            "collections",
             "charges",
             "adjustments",
             "ledger",
@@ -629,6 +636,12 @@ export function SettlementDetailPage() {
                   label: "COD liability",
                   amountMinor: settlement.codLiabilityMinor,
                   description: "COD held reduces what Head Office owes.",
+                },
+                {
+                  label: "Customer collections",
+                  amountMinor: settlement.collectionsMinor,
+                  description:
+                    "Prepaid money held by the franchise reduces what Head Office owes.",
                 },
                 { label: "Charges", amountMinor: settlement.chargesMinor },
                 { label: "Penalties", amountMinor: settlement.penaltiesMinor },
@@ -659,6 +672,9 @@ export function SettlementDetailPage() {
           </TabContent>
           <TabContent value="cod" className="pt-4">
             <Panel>{renderLines(grouped.cod)}</Panel>
+          </TabContent>
+          <TabContent value="collections" className="pt-4">
+            <Panel>{renderLines(grouped.collections)}</Panel>
           </TabContent>
           <TabContent value="charges" className="pt-4">
             <Panel>{renderLines(grouped.charges)}</Panel>

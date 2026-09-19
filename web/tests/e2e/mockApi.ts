@@ -2740,6 +2740,14 @@ export async function installMockApi(
         ],
         pagination: { page: 1, totalPages: 1, totalItems: 1 },
       });
+    if (path === "/api/v1/shipments/customs/preview" && method === "POST")
+      return json(route, {
+        currency: "NGN",
+        lineTotalsMinor: [500000],
+        goodsSubtotalMinor: 500000,
+        declaredValueMinor: 450000,
+        totalBeforeInsuranceMinor: 462000,
+      });
     if (path === "/api/v1/customers" && method === "GET")
       return json(route, {
         data: [

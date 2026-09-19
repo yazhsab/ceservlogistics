@@ -292,6 +292,9 @@ func CORS(cfg config.HTTPConfig) func(http.Handler) http.Handler {
 	}
 	allowHeaders := strings.Join([]string{
 		"Accept", "Authorization", "Content-Type", HeaderRequestID, HeaderIdempotencyKey, HeaderOrgContext,
+		// Operational clients attach the device envelope to pickup, scan and
+		// delivery requests. Cross-origin browsers must be able to send it.
+		"X-Device-Id", "X-Device-Event-Id", "X-Device-Model", "X-Client-Source", "X-Operating-Unit",
 	}, ", ")
 	exposeHeaders := strings.Join([]string{
 		HeaderRequestID, "Location", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset",

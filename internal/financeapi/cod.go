@@ -58,7 +58,7 @@ func (h *Handler) listObligations(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"data": rows})
+	return httpx.OK(w, map[string]any{"data": projectRows(rows, obligationListResponse)})
 }
 
 func (h *Handler) getObligation(w http.ResponseWriter, r *http.Request) error {
@@ -74,7 +74,7 @@ func (h *Handler) getObligation(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, map[string]any{"obligation": obligation, "collections": collections})
+	return httpx.OK(w, map[string]any{"obligation": obligationDetailResponse(*obligation), "collections": projectRows(collections, codCollectionResponse)})
 }
 
 func (h *Handler) codSummary(w http.ResponseWriter, r *http.Request) error {
@@ -159,7 +159,7 @@ func (h *Handler) recordCollection(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	return httpx.OK(w, map[string]any{
-		"obligation": result.Obligation, "collection": result.Collection,
+		"obligation": obligationResponse(result.Obligation), "collection": codCollectionResponse(result.Collection),
 		"duplicate": result.Duplicate,
 	})
 }
@@ -190,7 +190,7 @@ func (h *Handler) declareTransfer(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", map[string]any{"transfer": transfer, "items": items})
+	return httpx.Created(w, "", map[string]any{"transfer": codTransferResponse(*transfer), "items": projectRows(items, codTransferItemResponse)})
 }
 
 type acceptRequest struct {
@@ -217,7 +217,7 @@ func (h *Handler) acceptTransfer(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, transfer)
+	return httpx.OK(w, codTransferResponse(*transfer))
 }
 
 type openReconRequest struct {
@@ -252,7 +252,7 @@ func (h *Handler) openCODReconciliation(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", map[string]any{"reconciliation": recon, "expected": expected})
+	return httpx.Created(w, "", map[string]any{"reconciliation": codReconciliationResponse(*recon), "expected": projectRows(expected, obligationExpectedResponse)})
 }
 
 type countRequest struct {
@@ -281,7 +281,7 @@ func (h *Handler) recordCount(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, item)
+	return httpx.OK(w, codCountResponse(*item))
 }
 
 type completeReconRequest struct {
@@ -307,7 +307,7 @@ func (h *Handler) completeCODReconciliation(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, recon)
+	return httpx.OK(w, codReconciliationResponse(*recon))
 }
 
 type remitRequest struct {
@@ -347,7 +347,7 @@ func (h *Handler) createRemittance(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", remittance)
+	return httpx.Created(w, "", codRemittanceResponse(*remittance))
 }
 
 func (h *Handler) confirmRemittance(w http.ResponseWriter, r *http.Request) error {
@@ -363,7 +363,7 @@ func (h *Handler) confirmRemittance(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, remittance)
+	return httpx.OK(w, codRemittanceResponse(*remittance))
 }
 
 type codAdjustmentRequest struct {
@@ -392,7 +392,7 @@ func (h *Handler) requestCODAdjustment(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", adj)
+	return httpx.Created(w, "", codAdjustmentResponse(*adj))
 }
 
 func (h *Handler) approveCODAdjustment(w http.ResponseWriter, r *http.Request) error {
@@ -408,7 +408,7 @@ func (h *Handler) approveCODAdjustment(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, adj)
+	return httpx.OK(w, codAdjustmentResponse(*adj))
 }
 
 type disputeRequest struct {
@@ -437,7 +437,7 @@ func (h *Handler) raiseDispute(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.Created(w, "", dispute)
+	return httpx.Created(w, "", codDisputeResponse(*dispute))
 }
 
 type resolveDisputeRequest struct {
@@ -467,5 +467,5 @@ func (h *Handler) resolveDispute(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, dispute)
+	return httpx.OK(w, codDisputeResponse(*dispute))
 }

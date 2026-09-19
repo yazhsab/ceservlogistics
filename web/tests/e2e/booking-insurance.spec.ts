@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { BookingRequest } from "../../src/api/client";
 import type { components } from "../../src/api/schema";
-import { installMockApi, shipment } from "./mockApi";
+import { allPermissions, installMockApi, shipment } from "./mockApi";
 
 const insuredPreview: components["schemas"]["BookingPreview"] = {
   serviceability: {
@@ -742,4 +742,177 @@ test("shipment detail displays the saved insurance decision and customs goods", 
   await panel.screenshot({
     path: testInfo.outputPath("commercial-detail.png"),
   });
+});
+
+test("booking can create and select a customer without losing entered addresses @responsive", async ({
+  page,
+}, testInfo) => {
+  await login(page);
+  await page.goto("/shipments/new");
+  await page.locator("#sender-line1").fill("42 Training Avenue");
+  await page.getByRole("button", { name: "Add customer", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Create customer" });
+  await dialog.getByLabel("Customer name").fill("New Customer");
+  await dialog.getByLabel("Phone").fill("08000000000");
+  await dialog
+    .getByRole("button", { name: "Create customer", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page).toHaveURL(/\/shipments\/new$/);
+  await expect(
+    page.getByPlaceholder("Search customer code, name, email, or phone"),
+  ).toHaveValue("CUS-002 · New Customer");
+  await expect(page.locator("#sender-line1")).toHaveValue("42 Training Avenue");
+  await expect(page.getByText("CUS-002", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("booking-new-customer.png"),
+    fullPage: false,
+  });
+});
+
+test("booking explains missing customer permission and does not offer creation", async ({
+  page,
+}) => {
+  await installMockApi(page, {
+    permissions: allPermissions.filter((p) => p !== "customer.create"),
+  });
+  await login(page);
+  await page.goto("/shipments/new");
+  await expect(page.getByRole("button", { name: "Add customer" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByText(/Your role can select existing customers/),
+  ).toBeVisible();
+});
+
+test("customer lookup failure is distinguished from no matching customers", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/customers?*", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: "Customer search is temporarily unavailable.",
+        },
+      },
+    }),
+  );
+  await login(page);
+  await page.goto("/shipments/new");
+  await page
+    .getByPlaceholder("Search customer code, name, email, or phone")
+    .fill("Acme");
+  await expect(page.getByText(/Customer search failed:/)).toBeVisible();
+  await expect(page.getByText("No active customer found.")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Retry search" }),
+  ).toBeVisible();
+});
+
+test("automatic customs valuation survives postal errors and clears stale totals @responsive", async ({
+  page,
+}, testInfo) => {
+  let failValuation = false;
+  const bodies: components["schemas"]["CustomsDeclaration"][] = [];
+  await page.route("**/api/v1/shipments/customs/preview", async (route) => {
+    bodies.push(
+      route
+        .request()
+        .postDataJSON() as components["schemas"]["CustomsDeclaration"],
+    );
+    if (failValuation)
+      return route.fulfill({
+        status: 422,
+        json: {
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Discount cannot exceed the goods subtotal.",
+          },
+        },
+      });
+    return route.fulfill({
+      json: {
+        currency: "NGN",
+        lineTotalsMinor: [500000],
+        goodsSubtotalMinor: 500000,
+        declaredValueMinor: 450000,
+        totalBeforeInsuranceMinor: 462000,
+      },
+    });
+  });
+  await page.route("**/api/v1/shipments/preview", (route) =>
+    route.fulfill({
+      status: 422,
+      json: {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "The sender postal code 999999 is not configured for NG.",
+          details: {
+            field: "sender.pincode",
+            countryCode: "NG",
+            postalCode: "999999",
+          },
+        },
+      },
+    }),
+  );
+  await login(page);
+  await fillBooking(page);
+  await page.locator("#sender-pincode").fill("999999");
+  await page.getByLabel("Customer requests shipment insurance").check();
+  await page.getByLabel("Include customs declaration").check();
+  await page.getByLabel("Description of goods").fill("Cotton shirts");
+  await page.getByLabel("Quantity").fill("2");
+  await page.getByLabel("Value per unit").fill("2500");
+  await page.getByLabel("Goods discount", { exact: true }).fill("500");
+  await page.getByLabel("Customs freight charge").fill("100");
+  await page.getByLabel("Other customs charges").fill("20");
+  const valuation = page.getByRole("region", { name: "Customs valuation" });
+  await expect(valuation.getByText("₦4,620.00")).toBeVisible();
+  await expect(page.getByLabel("Goods line 1 total")).toHaveText("₦5,000.00");
+  await expect(valuation.getByText("Awaiting shipment preview")).toBeVisible();
+  expect(bodies.at(-1)).toMatchObject({
+    currency: "NGN",
+    discountMinor: 50000,
+    freightMinor: 10000,
+    otherChargesMinor: 2000,
+    items: [{ quantity: 2, unitValueMinor: 250000 }],
+  });
+  await previewButton(page).click();
+  const addressButton = page
+    .getByRole("button", { name: "Check sender address" })
+    .filter({ visible: true });
+  await expect(addressButton).toBeVisible();
+  await addressButton.click();
+  await expect(page.locator("#sender-pincode")).toBeFocused();
+  await expect(page.locator("#sender-pincode")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await valuation.scrollIntoViewIfNeeded();
+  await expect(valuation.getByText("₦4,620.00")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("automatic-customs.png"),
+    fullPage: false,
+  });
+  failValuation = true;
+  await page.getByLabel("Goods discount", { exact: true }).fill("6000");
+  await expect(valuation.getByText("₦4,620.00")).toHaveCount(0);
+  await expect(valuation.getByText(/Discount cannot exceed/)).toBeVisible();
+  await expect(page.getByLabel("Goods line 1 total")).toHaveText("—");
+  await page.getByLabel("Quantity").fill("");
+  await expect(valuation.getByText(/Complete the goods lines/)).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

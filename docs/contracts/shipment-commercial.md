@@ -32,6 +32,16 @@ No production rate is automatically created by this feature. Provision or review
 
 Acceptance records the customer's agreement to the premium. It does not issue an insurer policy, certificate, claim or payment receipt.
 
+## Customs valuation before shipment preview
+
+Added 2026-09-18. `POST /api/v1/shipments/customs/preview` requires `shipment.create` and accepts a `CustomsDeclaration` directly. It validates the goods and active origin countries and returns `CustomsValuationPreview`: currency, line totals, goods subtotal, declared value after discount, and `totalBeforeInsuranceMinor`.
+
+This read-only calculation does not require customer selection, postal records, route, service or a rate card. It allocates no AWB and saves no booking. The booking screen requests it automatically after valid customs edits settle, discards outdated results and displays errors with a retry action. Calculations remain server-owned and share the final booking calculation; no financial formula is duplicated in the browser.
+
+The response deliberately excludes insurance and a final invoice total. Full shipment preview remains required to verify currency compatibility, route, premium and customer acceptance. Unit values, customs freight and other customs charges remain operator-supplied commercial-invoice inputs; they are not inferred from shipping tariffs. This endpoint is for staff booking, not a new partner scope.
+
+Postal lookup errors identify `details.field`, `details.countryCode` and `details.postalCode`. The booking screen highlights the affected address and directs the operator to its postal field without substituting another code or bypassing serviceability.
+
 ## Customs values
 
 `customs` is optional and includes invoice reference, export reason, terms of sale, declaration statement, currency, and 1–100 goods lines. Each line contains description, whole quantity, unit, value per unit, country of origin and optional HS/tariff code. Countries of origin must be active configured countries. Currency must match shipment currency; this version supports the existing NGN/INR/USD currency set and performs no FX conversion.
