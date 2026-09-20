@@ -1,5 +1,9 @@
 # Client reference PDF review
 
+> Update: the later `2026 RATES.xlsx` and `2026 Updated Onforwarding
+> Charges.xlsx` workbooks supersede the PDF-derived surcharge interpretation
+> below for active domestic pricing. See `ups-nigeria-2026-tariff.md`.
+
 Reviewed 20 September 2026:
 
 - `DOCUMENTATION (ODOO) (2).pdf`

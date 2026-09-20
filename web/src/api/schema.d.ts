@@ -2917,6 +2917,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/pricing/onforwarding-locations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Search configured domestic on-forwarding locations
+     * @description Requires `pricing.quote`. Returns the active 2026 city-level EAS/RAS configuration.
+     */
+    get: {
+      parameters: {
+        query: {
+          stateCode: string;
+          q: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Matching delivery cities and their configured surcharge. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              data?: {
+                city?: string;
+                centreArea?: string;
+                rateZoneCode?: string;
+                /** @enum {string} */
+                surchargeType?: "E" | "R";
+                surchargeAmountMinor?: components["schemas"]["MinorAmount"];
+              }[];
+            };
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/rate-cards": {
     parameters: {
       query?: never;
@@ -9604,6 +9655,8 @@ export interface components {
       destinationCountry?: string;
       originPincode: components["schemas"]["Pincode"];
       destinationPincode: components["schemas"]["Pincode"];
+      /** @description Used to select an exact city-level on-forwarding charge when configured. */
+      destinationCity?: string;
       serviceCode: string;
       /** @description Selects the customer's own rate card where one exists. */
       customerId?: string;
@@ -9680,6 +9733,14 @@ export interface components {
      */
     Quote: {
       insurance?: components["schemas"]["InsuranceQuote"];
+      domesticTariff?: {
+        rateZoneCode?: string;
+        city?: string;
+        centreArea?: string;
+        /** @enum {string} */
+        surchargeType?: "E" | "R";
+        surchargeAmountMinor?: components["schemas"]["MinorAmount"];
+      };
       currency?: string;
       rateCardId?: string;
       rateCardCode?: string;

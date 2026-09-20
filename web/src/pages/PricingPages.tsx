@@ -60,6 +60,7 @@ type RecordPage = OffsetPageOf<Record<string, unknown>>;
 const simulatorSchema = z.object({
   originPincode: z.string().regex(/^[1-9][0-9]{5}$/),
   destinationPincode: z.string().regex(/^[1-9][0-9]{5}$/),
+  destinationCity: z.string().min(1, "Enter the destination city."),
   customerId: z.string().optional(),
   serviceCode: z.string().min(1),
   paymentMode: z.enum(["PREPAID", "COD", "CREDIT", "TO_PAY"]),
@@ -102,6 +103,7 @@ export function PricingSimulatorPage() {
       const request: QuoteRequest = {
         originPincode: values.originPincode,
         destinationPincode: values.destinationPincode,
+        destinationCity: values.destinationCity,
         serviceCode: values.serviceCode,
         paymentMode: values.paymentMode,
         packages: [
@@ -173,6 +175,18 @@ export function PricingSimulatorPage() {
                   inputMode="numeric"
                   maxLength={6}
                   {...register("destinationPincode")}
+                />
+              </Field>
+              <Field
+                label="Destination city"
+                htmlFor="simulator-destination-city"
+                required
+                error={errors.destinationCity?.message}
+                hint="An exact city match applies the configured 2026 extended or remote-area charge."
+              >
+                <Input
+                  id="simulator-destination-city"
+                  {...register("destinationCity")}
                 />
               </Field>
             </div>

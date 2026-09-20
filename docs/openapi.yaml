@@ -1892,6 +1892,39 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
+  /api/v1/pricing/onforwarding-locations:
+    get:
+      tags: [Pricing]
+      summary: Search configured domestic on-forwarding locations
+      description: Requires `pricing.quote`. Returns the active 2026 city-level EAS/RAS configuration.
+      parameters:
+        - name: stateCode
+          in: query
+          required: true
+          schema: { type: string }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Matching delivery cities and their configured surcharge.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        city: { type: string }
+                        centreArea: { type: string }
+                        rateZoneCode: { type: string }
+                        surchargeType: { type: string, enum: [E, R] }
+                        surchargeAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
+
   /api/v1/rate-cards:
     get:
       tags: [Pricing]
@@ -9896,6 +9929,9 @@ components:
         destinationCountry: { type: string, pattern: "^[A-Z]{2}$", description: Defaults to the organization country. }
         originPincode: { $ref: "#/components/schemas/Pincode" }
         destinationPincode: { $ref: "#/components/schemas/Pincode" }
+        destinationCity:
+          type: string
+          description: Used to select an exact city-level on-forwarding charge when configured.
         serviceCode: { type: string }
         customerId:
           type: string
@@ -9937,6 +9973,14 @@ components:
       type: object
       properties:
         insurance: { $ref: "#/components/schemas/InsuranceQuote" }
+        domesticTariff:
+          type: object
+          properties:
+            rateZoneCode: { type: string }
+            city: { type: string }
+            centreArea: { type: string }
+            surchargeType: { type: string, enum: [E, R] }
+            surchargeAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
         currency: { type: string }
         rateCardId: { type: string }
         rateCardCode: { type: string }

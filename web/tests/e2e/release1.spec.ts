@@ -81,6 +81,7 @@ test("pricing simulation explains weight and total", async ({ page }) => {
   await page.goto("/pricing/simulator");
   await page.getByLabel("Origin postal code").fill("100001");
   await page.getByLabel("Destination postal code").fill("900001");
+  await page.getByLabel("Destination city").fill("Abuja");
   await page.getByLabel("Courier product").selectOption("EXPRESS");
   await page.getByRole("button", { name: "Calculate price" }).click();
   await expect(page.getByText("Chargeable weight")).toBeVisible();

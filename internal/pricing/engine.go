@@ -17,7 +17,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ceserve/courier-os/internal/dbgen"
 	"github.com/ceserve/courier-os/internal/platform/apierr"
@@ -54,12 +56,13 @@ type QuoteInput struct {
 
 	Service *dbgen.CourierService
 
-	OriginZoneID   int64
-	OriginZoneCode string
-	DestZoneID     int64
-	DestZoneCode   string
-	OriginStateID  int64
-	DestStateID    int64
+	OriginZoneID    int64
+	OriginZoneCode  string
+	DestZoneID      int64
+	DestZoneCode    string
+	OriginStateID   int64
+	DestStateID     int64
+	DestinationCity string
 
 	Packages []Package
 
@@ -127,12 +130,34 @@ type Quote struct {
 	RoundingMinor       int64 `json:"roundingMinor"`
 	TotalMinor          int64 `json:"totalMinor"`
 
-	LineItems []LineItem      `json:"lineItems"`
-	Insurance *InsuranceQuote `json:"insurance,omitempty"`
+	LineItems      []LineItem               `json:"lineItems"`
+	Insurance      *InsuranceQuote          `json:"insurance,omitempty"`
+	DomesticTariff *DomesticTariffSelection `json:"domesticTariff,omitempty"`
 
 	// internal identifiers for the booking snapshot
 	rateCardDBID        int64
 	rateCardVersionDBID int64
+}
+
+// DomesticTariffSelection explains which supplied 2026 tariff destination was
+// selected.  It is returned with the quote so operators can verify a city-level
+// on-forwarding charge instead of seeing an unexplained total.
+type DomesticTariffSelection struct {
+	RateZoneCode         string `json:"rateZoneCode"`
+	City                 string `json:"city,omitempty"`
+	CentreArea           string `json:"centreArea,omitempty"`
+	SurchargeType        string `json:"surchargeType,omitempty"`
+	SurchargeAmountMinor int64  `json:"surchargeAmountMinor,omitempty"`
+}
+
+type domesticRateArea struct {
+	publicID             string
+	rateZoneCode         string
+	city                 string
+	centreArea           string
+	surchargeCode        string
+	surchargeType        string
+	surchargeAmountMinor int64
 }
 
 // conditions is the JSON policy attached to a surcharge or discount rule.
@@ -216,9 +241,20 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 		minChargeable = zoneRate.MinChargeableWeightGrams
 	}
 	quote.Weight = ComputeChargeableWeight(in.Packages, in.Service, minChargeable)
+	domestic, err := e.resolveDomesticRateArea(ctx, in, card.VersionID)
+	if err != nil {
+		return nil, err
+	}
+	if domestic != nil {
+		quote.DomesticTariff = &DomesticTariffSelection{
+			RateZoneCode: domestic.rateZoneCode, City: domestic.city,
+			CentreArea: domestic.centreArea, SurchargeType: domestic.surchargeType,
+			SurchargeAmountMinor: domestic.surchargeAmountMinor,
+		}
+	}
 
 	// 3. Freight.
-	freight, freightItem, err := e.computeFreight(ctx, in, card, zoneRate, haveZoneRate, quote.Weight.ChargeableGrams)
+	freight, freightItem, err := e.computeFreight(ctx, in, card, zoneRate, haveZoneRate, domestic, quote.Weight.ChargeableGrams)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +262,7 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	quote.LineItems = append(quote.LineItems, freightItem)
 
 	// 4. Surcharges.
-	surchargeTaxable, surchargeExempt, surchargeItems, offer, err := e.computeSurcharges(ctx, in, card.VersionID, freight, quote.Weight.ChargeableGrams)
+	surchargeTaxable, surchargeExempt, surchargeItems, offer, err := e.computeSurcharges(ctx, in, card.VersionID, freight, domestic, quote.Weight.ChargeableGrams)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +413,7 @@ func (e *Engine) resolveRateCard(ctx context.Context, in QuoteInput) (*resolvedC
 // charged per started step, matching how couriers actually bill.
 func (e *Engine) computeFreight(
 	ctx context.Context, in QuoteInput, card *resolvedCard,
-	zoneRate dbgen.ZoneRate, haveZoneRate bool, chargeable int32,
+	zoneRate dbgen.ZoneRate, haveZoneRate bool, domestic *domesticRateArea, chargeable int32,
 ) (int64, LineItem, error) {
 	slab, err := e.q.FindWeightSlab(ctx, dbgen.FindWeightSlabParams{
 		RateCardVersionID: card.VersionID, CourierServiceID: in.Service.ID,
@@ -406,6 +442,15 @@ func (e *Engine) computeFreight(
 	}
 	if !database.IsNoRows(err) {
 		return 0, LineItem{}, apierr.Internal(fmt.Errorf("find weight slab: %w", err))
+	}
+	if domestic != nil {
+		amount, item, found, domesticErr := e.computeDomesticFreight(ctx, in, card.VersionID, domestic, chargeable)
+		if domesticErr != nil {
+			return 0, LineItem{}, domesticErr
+		}
+		if found {
+			return amount, item, nil
+		}
 	}
 
 	if !haveZoneRate {
@@ -470,7 +515,7 @@ func (e *Engine) computeFreight(
 // Rules are applied in ascending priority so that a percentage rule based on
 // FREIGHT_PLUS_SURCHARGES sees a running total that is itself deterministic.
 func (e *Engine) computeSurcharges(
-	ctx context.Context, in QuoteInput, versionID, freight int64, chargeable int32,
+	ctx context.Context, in QuoteInput, versionID, freight int64, domestic *domesticRateArea, chargeable int32,
 ) (taxable, exempt int64, items []LineItem, insurance *InsuranceQuote, err error) {
 	rules, err := e.q.ListSurchargeRulesForVersion(ctx, dbgen.ListSurchargeRulesForVersionParams{
 		RateCardVersionID: versionID, CourierServiceID: &in.Service.ID,
@@ -479,6 +524,24 @@ func (e *Engine) computeSurcharges(
 		return 0, 0, nil, nil, apierr.Internal(fmt.Errorf("list surcharge rules: %w", err))
 	}
 	running := freight
+	if domestic != nil && domestic.surchargeAmountMinor > 0 {
+		label := "Extended area delivery charge"
+		code := "ONFORWARDING_EAS"
+		if domestic.surchargeType == "R" {
+			label = "Remote area delivery charge"
+			code = "ONFORWARDING_RAS"
+		}
+		items = append(items, LineItem{
+			Kind: KindSurcharge, Code: code, Label: label,
+			AmountMinor: domestic.surchargeAmountMinor, RuleID: domestic.publicID,
+			Rate: "fixed",
+			Explanation: fmt.Sprintf("%s delivery via %s; source surcharge code %s = %s",
+				domestic.city, domestic.centreArea, domestic.surchargeCode,
+				formatMinor(domestic.surchargeAmountMinor, in.Currency)),
+		})
+		taxable += domestic.surchargeAmountMinor
+		running += domestic.surchargeAmountMinor
+	}
 	if in.InsuranceRequired {
 		insurance = &InsuranceQuote{DeclaredValueMinor: in.DeclaredValueMinor, Currency: string(in.Currency)}
 	}
@@ -519,6 +582,97 @@ func (e *Engine) computeSurcharges(
 		return 0, 0, nil, nil, apierr.Conflict("INSURANCE_RATE_NOT_CONFIGURED", "No insurance rate applies to this shipment. Configure an INSURANCE surcharge on the applicable rate-card version before requesting insurance.")
 	}
 	return taxable, exempt, items, insurance, nil
+}
+
+// resolveDomesticRateArea selects a commercial tariff zone independently from
+// the operational/geographic zone. An exact normalized city match carries the
+// supplied EAS/RAS charge; otherwise the destination state's capital zone is
+// used for base freight without inventing an on-forwarding charge.
+func (e *Engine) resolveDomesticRateArea(ctx context.Context, in QuoteInput, versionID int64) (*domesticRateArea, error) {
+	normalizedCity := normalizeDomesticCity(in.DestinationCity)
+	if normalizedCity != "" {
+		var row domesticRateArea
+		err := e.db.Pool.QueryRow(ctx, `
+			SELECT public_id,rate_zone_code,city_name,centre_area,surcharge_code,
+			       surcharge_type,surcharge_amount_minor
+			  FROM domestic_onforwarding_locations
+			 WHERE rate_card_version_id=$1 AND destination_state_id=$2
+			   AND normalized_city_name=$3`, versionID, in.DestStateID, normalizedCity).Scan(
+			&row.publicID, &row.rateZoneCode, &row.city, &row.centreArea,
+			&row.surchargeCode, &row.surchargeType, &row.surchargeAmountMinor)
+		if err == nil {
+			return &row, nil
+		}
+		if !database.IsNoRows(err) {
+			return nil, apierr.Internal(fmt.Errorf("resolve domestic on-forwarding location: %w", err))
+		}
+	}
+	var zone string
+	err := e.db.Pool.QueryRow(ctx, `
+		SELECT rate_zone_code FROM domestic_state_rate_zones
+		 WHERE rate_card_version_id=$1 AND origin_state_id=$2 AND destination_state_id=$3`,
+		versionID, in.OriginStateID, in.DestStateID).Scan(&zone)
+	if err == nil {
+		return &domesticRateArea{rateZoneCode: zone}, nil
+	}
+	if database.IsNoRows(err) {
+		return nil, nil
+	}
+	return nil, apierr.Internal(fmt.Errorf("resolve domestic state tariff zone: %w", err))
+}
+
+func (e *Engine) computeDomesticFreight(
+	ctx context.Context, in QuoteInput, versionID int64, area *domesticRateArea, chargeable int32,
+) (int64, LineItem, bool, error) {
+	var publicID string
+	var fromWeight int32
+	var toWeight *int32
+	var price int64
+	var stepWeight *int32
+	var stepPrice *int64
+	err := e.db.Pool.QueryRow(ctx, `
+		SELECT public_id,from_weight_grams,to_weight_grams,price_minor,
+		       additional_step_grams,additional_price_minor
+		  FROM domestic_weight_slabs
+		 WHERE rate_card_version_id=$1 AND courier_service_id=$2 AND origin_state_id=$3
+		   AND rate_zone_code=$4 AND from_weight_grams <= $5
+		   AND (to_weight_grams IS NULL OR to_weight_grams > $5)
+		 ORDER BY from_weight_grams DESC LIMIT 1`, versionID, in.Service.ID,
+		in.OriginStateID, area.rateZoneCode, chargeable).Scan(
+		&publicID, &fromWeight, &toWeight, &price, &stepWeight, &stepPrice)
+	if database.IsNoRows(err) {
+		return 0, LineItem{}, false, nil
+	}
+	if err != nil {
+		return 0, LineItem{}, false, apierr.Internal(fmt.Errorf("find domestic weight slab: %w", err))
+	}
+	amount := price
+	explanation := fmt.Sprintf("2026 domestic zone %s rate for %dg = %s",
+		area.rateZoneCode, chargeable, formatMinor(price, in.Currency))
+	if toWeight == nil && stepWeight != nil && stepPrice != nil {
+		// Open-ended rows begin one gram above their base threshold. The source
+		// table supplies the 70 kg minimum and a per-started-kg increment.
+		excess := int64(chargeable - (fromWeight - 1))
+		steps := (excess + int64(*stepWeight) - 1) / int64(*stepWeight)
+		extra := money.ApplyPerUnit(*stepPrice, steps)
+		amount += extra
+		explanation += fmt.Sprintf(" plus %d started %dg step(s) at %s = %s",
+			steps, *stepWeight, formatMinor(*stepPrice, in.Currency), formatMinor(extra, in.Currency))
+	}
+	return amount, LineItem{
+		Kind: KindFreight, Code: "DOMESTIC_FREIGHT", Label: "Domestic freight",
+		AmountMinor: amount, RuleID: publicID, Explanation: explanation,
+	}, true, nil
+}
+
+func normalizeDomesticCity(value string) string {
+	var builder strings.Builder
+	for _, r := range strings.TrimSpace(value) {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			builder.WriteRune(unicode.ToUpper(r))
+		}
+	}
+	return builder.String()
 }
 
 // computeDiscounts applies discount rules.

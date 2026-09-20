@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,10 +40,46 @@ func NewHandler(e *Engine, q *dbgen.Queries, geo *geography.Service, prod *produ
 // Routes mounts pricing endpoints under /pricing.
 func (h *Handler) Routes(r chi.Router) {
 	r.With(auth.RequirePermission("pricing.quote")).Post("/quote", httpx.Wrap(h.quote))
+	r.With(auth.RequirePermission("pricing.quote")).Get("/onforwarding-locations", httpx.Wrap(h.listOnforwardingLocations))
 	r.With(auth.RequirePermission("rate_card.read")).Get("/state-base-rates", httpx.Wrap(h.listStateBaseRates))
 	r.With(auth.RequirePermission("rate_card.manage")).Post("/state-base-rates", httpx.Wrap(h.upsertStateBaseRate))
 	r.With(auth.RequirePermission("rate_card.read")).Get("/package-types", httpx.Wrap(h.listPackageTypes))
 	r.With(auth.RequirePermission("rate_card.manage")).Post("/package-types", httpx.Wrap(h.upsertPackageType))
+}
+
+func (h *Handler) listOnforwardingLocations(w http.ResponseWriter, r *http.Request) error {
+	p, err := tenant.Require(r)
+	if err != nil {
+		return err
+	}
+	stateCode := strings.ToUpper(strings.TrimSpace(httpx.Query(r, "stateCode")))
+	query := normalizeDomesticCity(httpx.Query(r, "q"))
+	if stateCode == "" || query == "" {
+		return httpx.OK(w, map[string]any{"data": []any{}})
+	}
+	rows, err := h.engine.db.Pool.Query(r.Context(), `
+		SELECT d.city_name,d.centre_area,d.surcharge_type,d.surcharge_amount_minor,d.rate_zone_code
+		  FROM domestic_onforwarding_locations d
+		  JOIN states s ON s.id=d.destination_state_id
+		  JOIN rate_card_versions v ON v.id=d.rate_card_version_id AND v.status='ACTIVE'
+		 WHERE d.organization_id=$1 AND s.code=$2 AND d.normalized_city_name LIKE '%' || $3 || '%'
+		 ORDER BY CASE WHEN d.normalized_city_name LIKE $3 || '%' THEN 0 ELSE 1 END,d.city_name
+		 LIMIT 20`, p.OrganizationID, stateCode, query)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	defer rows.Close()
+	data := make([]map[string]any, 0)
+	for rows.Next() {
+		var city, centre, surchargeType, zone string
+		var amount int64
+		if err := rows.Scan(&city, &centre, &surchargeType, &amount, &zone); err != nil {
+			return apierr.Internal(err)
+		}
+		data = append(data, map[string]any{"city": city, "centreArea": centre,
+			"rateZoneCode": zone, "surchargeType": surchargeType, "surchargeAmountMinor": amount})
+	}
+	return httpx.OK(w, map[string]any{"data": data})
 }
 
 // PaymentModes is the accepted payment-mode enum.
@@ -62,6 +99,7 @@ type QuoteRequest struct {
 	DestinationCountry string           `json:"destinationCountry,omitempty"`
 	OriginPincode      string           `json:"originPincode"`
 	DestinationPincode string           `json:"destinationPincode"`
+	DestinationCity    string           `json:"destinationCity,omitempty"`
 	ServiceCode        string           `json:"serviceCode"`
 	CustomerID         string           `json:"customerId,omitempty"`
 	Packages           []packageRequest `json:"packages"`
@@ -189,6 +227,7 @@ func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req 
 		OriginZoneID:   originZone.ZoneID, OriginZoneCode: originZone.ZoneCode,
 		DestZoneID: destZone.ZoneID, DestZoneCode: destZone.ZoneCode,
 		OriginStateID: origin.StateID, DestStateID: dest.StateID,
+		DestinationCity:    strings.TrimSpace(req.DestinationCity),
 		Packages:           req.toPackages(),
 		PaymentMode:        paymentMode,
 		DeclaredValueMinor: req.DeclaredValueMinor,

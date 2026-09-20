@@ -184,6 +184,19 @@ func TestMatchesConditions(t *testing.T) {
 	}
 }
 
+func TestNormalizeDomesticCity(t *testing.T) {
+	for input, want := range map[string]string{
+		"Port Harcourt": "PORTHARCOURT",
+		"Jama'are":      "JAMAARE",
+		"  K-Dere  ":    "KDERE",
+		"Okomu/Iddo":    "OKOMUIDDO",
+	} {
+		if got := normalizeDomesticCity(input); got != want {
+			t.Errorf("normalizeDomesticCity(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestSurchargeBasisSelection(t *testing.T) {
 	in := QuoteInput{DeclaredValueMinor: 250000, CODAmountMinor: 99000}
 	cases := map[string]int64{

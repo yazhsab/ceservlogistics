@@ -225,6 +225,13 @@ type PlaceSuggestion = {
   stateCode: string;
   isRemote: boolean;
 };
+type OnforwardingLocation = {
+  city: string;
+  centreArea: string;
+  rateZoneCode: string;
+  surchargeType: "E" | "R";
+  surchargeAmountMinor: number;
+};
 
 const sections = [
   { id: "sender", label: "Sender", icon: UserRound },
@@ -1270,6 +1277,8 @@ function AddressFields({
   const countries = useCountries();
   const country = useWatch({ control, name: `${prefix}.countryCode` });
   const selectedState = useWatch({ control, name: `${prefix}.state` });
+  const selectedCity = useWatch({ control, name: `${prefix}.city` });
+  const deferredCity = useDeferredValue(selectedCity ?? "");
   const states = useQuery({
     queryKey: ["geography-states", country],
     queryFn: () =>
@@ -1298,6 +1307,19 @@ function AddressFields({
       ),
     enabled: deferredPlaceQuery.trim().length >= 2,
     staleTime: 5 * 60_000,
+  });
+  const onforwardingLocations = useQuery({
+    queryKey: ["onforwarding-locations", stateCode, deferredCity],
+    queryFn: () =>
+      apiRequest<{ data: OnforwardingLocation[] }>(
+        `/api/v1/pricing/onforwarding-locations${queryString({ stateCode, q: deferredCity.trim() })}`,
+      ),
+    enabled:
+      prefix === "recipient" &&
+      country === "NG" &&
+      Boolean(stateCode) &&
+      deferredCity.trim().length >= 2,
+    staleTime: 24 * 60 * 60_000,
   });
   const selectPlace = (place: PlaceSuggestion) => {
     setValue(`${prefix}.pincode`, place.code, {
@@ -1542,8 +1564,31 @@ function AddressFields({
         htmlFor={`${prefix}-city`}
         required
         error={errors?.city?.message}
+        hint={
+          prefix === "recipient" && country === "NG"
+            ? "Choose a suggested city when available so the 2026 extended or remote-area charge is applied accurately."
+            : undefined
+        }
       >
-        <Input id={`${prefix}-city`} {...register(`${prefix}.city`)} />
+        <Input
+          id={`${prefix}-city`}
+          list={
+            prefix === "recipient" && country === "NG"
+              ? `${prefix}-onforwarding-cities`
+              : undefined
+          }
+          autoComplete="off"
+          {...register(`${prefix}.city`)}
+        />
+        {prefix === "recipient" && country === "NG" ? (
+          <datalist id={`${prefix}-onforwarding-cities`}>
+            {onforwardingLocations.data?.data.map((location) => (
+              <option key={`${location.centreArea}-${location.city}`} value={location.city}>
+                {location.surchargeType === "R" ? "Remote" : "Extended"} via {location.centreArea}
+              </option>
+            ))}
+          </datalist>
+        ) : null}
       </Field>
     </>
   );

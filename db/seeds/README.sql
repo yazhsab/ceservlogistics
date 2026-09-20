@@ -8,4 +8,11 @@
 -- its file must validate its target tenant and be transactional and idempotent.
 -- General production reference data should still use the bulk-import API so it
 -- is validated, auditable and restartable.
+--
+-- ceserve_nigeria.sql is generated with:
+-- python3 scripts/generate_ceserve_nigeria_seed.py \
+--   --input data/nigeria/postcode-candidates-2026-09-20.csv \
+--   --domestic-rates data/carriers/ups-nigeria-2026-domestic-rates.csv \
+--   --onforwarding data/carriers/ups-nigeria-2026-onforwarding.csv \
+--   --output db/seeds/ceserve_nigeria.sql
 SELECT 1;
