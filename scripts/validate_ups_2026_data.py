@@ -20,6 +20,7 @@ def main() -> None:
     rates = rows("ups-nigeria-2026-domestic-rates.csv")
     areas = rows("ups-nigeria-2026-onforwarding.csv")
     conflicts = rows("ups-nigeria-2026-onforwarding-conflicts.csv")
+    seed = (ROOT / "db" / "seeds" / "ceserve_nigeria.sql").read_text(encoding="utf-8")
 
     assert len(rates) == 424
     assert len(areas) == 2597
@@ -30,6 +31,8 @@ def main() -> None:
         {("E", "500000"): 1559, ("R", "700000"): 1038}
     )
     assert len({r["conflict_key"] for r in conflicts}) == 20
+    assert seed.count("\nBEGIN;\n") == 1
+    assert seed.rstrip().endswith("COMMIT;")
     print("UPS Nigeria 2026 tariff data validation passed")
 
 

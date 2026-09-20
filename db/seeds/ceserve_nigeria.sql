@@ -13,6 +13,8 @@
 -- defines Lagos as the origin. Other origins retain the state-rate fallback
 -- until the client supplies their directional tariff matrices.
 
+BEGIN;
+
 DO $$
 BEGIN
     IF (SELECT count(*) FROM organizations WHERE code = 'CESERVE') <> 1 THEN
@@ -6356,3 +6358,5 @@ BEGIN
     IF domestic_slab_count <> 424 THEN RAISE EXCEPTION 'CESERVE domestic slabs incomplete: %',domestic_slab_count; END IF;
     IF onforwarding_count <> 2597 THEN RAISE EXCEPTION 'CESERVE on-forwarding locations incomplete: %',onforwarding_count; END IF;
 END $$;
+
+COMMIT;
