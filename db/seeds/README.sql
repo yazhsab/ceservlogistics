@@ -2,8 +2,10 @@
 --
 -- Run one with:  migrate seed --file <name>
 --
--- Seeds are for local development, demo environments and load testing. They are
--- never applied automatically and never run in production. Production reference
--- data (the global PIN code dataset) is loaded through the bulk-import API so
--- that it is validated, auditable and restartable.
+-- Seeds are never applied automatically. Most are for local development, demo
+-- environments and load testing. A reviewed, tenant-scoped configuration seed
+-- may be run explicitly during a controlled deployment after a database backup;
+-- its file must validate its target tenant and be transactional and idempotent.
+-- General production reference data should still use the bulk-import API so it
+-- is validated, auditable and restartable.
 SELECT 1;
