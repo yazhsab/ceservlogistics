@@ -214,6 +214,91 @@ test("insurance validates goods value and preserves the server quote and booking
   await expect(page.getByText("Shipment booked successfully")).toBeVisible();
 });
 
+test("customs insurance automatically shows the configured server premium", async ({
+  page,
+}) => {
+  const preview = structuredClone(insuredPreview);
+  const insurance = {
+    ...preview.quote.insurance!,
+    rateBp: 100,
+    declaredValueMinor: 10000000,
+    premiumMinor: 100000,
+    rules: preview.quote.insurance!.rules?.map((rule) => ({
+      ...rule,
+      rateBp: 100,
+      basisMinor: 10000000,
+      premiumMinor: 100000,
+      explanation: "1.00% on declared value of NGN 100000.00 = NGN 1000.00",
+    })),
+  };
+  const customs: components["schemas"]["CustomsSummary"] = {
+    declaration: {
+      currency: "NGN",
+      reasonForExport: "Sale",
+      discountMinor: 0,
+      freightMinor: 0,
+      otherChargesMinor: 0,
+      items: [
+        {
+          description: "Personal effects",
+          quantity: 1,
+          unitOfMeasure: "pieces",
+          unitValueMinor: 10000000,
+          countryOfOrigin: "NG",
+        },
+      ],
+    },
+    lineTotalsMinor: [10000000],
+    goodsSubtotalMinor: 10000000,
+    declaredValueMinor: 10000000,
+    insuranceMinor: 100000,
+    invoiceTotalMinor: 10100000,
+  };
+  preview.declaredValueMinor = 10000000;
+  preview.quote.insurance = insurance;
+  preview.commercial = {
+    ...preview.commercial,
+    insurance: { status: "AWAITING_ACCEPTANCE", quote: insurance },
+    customs,
+  };
+  await page.route("**/api/v1/shipments/customs/preview", (route) =>
+    route.fulfill({
+      json: {
+        currency: "NGN",
+        lineTotalsMinor: [10000000],
+        goodsSubtotalMinor: 10000000,
+        declaredValueMinor: 10000000,
+        totalBeforeInsuranceMinor: 10000000,
+      },
+    }),
+  );
+  await page.route("**/api/v1/shipments/preview", (route) =>
+    route.fulfill({ json: preview }),
+  );
+
+  await login(page);
+  await fillBooking(page);
+  await page.getByLabel("Include customs declaration").check();
+  await page.getByLabel("Description of goods").fill("Personal effects");
+  await page.getByLabel("Value per unit").fill("100000");
+  const automaticPreview = page.waitForRequest("**/api/v1/shipments/preview");
+  await page.getByLabel("Customer requests shipment insurance").check();
+  const request = await automaticPreview;
+  expect(request.postDataJSON()).toMatchObject({
+    insuranceRequired: true,
+    customs: {
+      items: [{ unitValueMinor: 10000000 }],
+    },
+  });
+
+  const panel = page.locator("#customs");
+  await expect(
+    panel.getByText("Insurance (1%)", { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByText("₦1,000.00", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Awaiting shipment preview/)).toHaveCount(0);
+});
+
 test("unchecked insurance remains optional and does not imply customer acceptance", async ({
   page,
 }) => {

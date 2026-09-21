@@ -195,6 +195,11 @@ const bookingSchema = z
       });
   });
 export type BookingValues = z.infer<typeof bookingSchema>;
+type PreviewInput = {
+  values: BookingValues;
+  reveal: boolean;
+  requestKey: string;
+};
 type Preview = components["schemas"]["BookingPreview"];
 type PackageTypePreset = {
   id: string;
@@ -243,6 +248,36 @@ const sections = [
   { id: "review", label: "Review", icon: Check },
 ];
 
+function createBookingRequest(values: BookingValues): BookingRequest {
+  return {
+    ...commercialRequest(values),
+    customerId: values.customerId,
+    referenceNumber: values.referenceNumber || undefined,
+    serviceCode: values.serviceCode,
+    paymentMode: values.paymentMode,
+    sender: cleanAddress(values.sender),
+    recipient: cleanAddress(values.recipient),
+    packages: values.packages.map((item) => ({
+      reference: item.reference || undefined,
+      actualWeightGrams: kgToGrams(item.actualWeightKg) ?? 0,
+      lengthMm: cmToMm(item.lengthCm),
+      widthMm: cmToMm(item.widthCm),
+      heightMm: cmToMm(item.heightCm),
+      contentDescription: item.contentDescription || values.contentDescription,
+    })),
+    declaredValueMinor: values.customs.enabled
+      ? undefined
+      : parseDeclaredGoodsValue(values.declaredValue),
+    codAmountMinor: toMinorUnits(values.codAmount),
+    insuranceRequired: values.insuranceRequired,
+    contentDescription: values.contentDescription,
+    specialInstructions: values.specialInstructions || undefined,
+    isFragile: values.isFragile,
+    isDangerousGoods: values.isDangerousGoods,
+    bookingUnitId: values.bookingUnitId || undefined,
+  };
+}
+
 export default function BookingPage() {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
@@ -260,6 +295,7 @@ export default function BookingPage() {
     crypto.randomUUID(),
   );
   const lastBody = useRef<string | undefined>(undefined);
+  const lastAutomaticPreview = useRef<string | undefined>(undefined);
   const [submissionMessage, setSubmissionMessage] = useState("");
   const {
     register,
@@ -359,40 +395,20 @@ export default function BookingPage() {
       ) {
         event.preventDefault();
         if (preview?.quote && !previewStale) formRef.current?.requestSubmit();
-        else void handleSubmit((values) => previewMutation.mutate(values))();
+        else
+          void handleSubmit((values) =>
+            previewMutation.mutate({
+              values,
+              reveal: true,
+              requestKey: JSON.stringify(createBookingRequest(values)),
+            }),
+          )();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   });
 
-  const createBookingRequest = (values: BookingValues): BookingRequest => ({
-    ...commercialRequest(values),
-    customerId: values.customerId,
-    referenceNumber: values.referenceNumber || undefined,
-    serviceCode: values.serviceCode,
-    paymentMode: values.paymentMode,
-    sender: cleanAddress(values.sender),
-    recipient: cleanAddress(values.recipient),
-    packages: values.packages.map((item) => ({
-      reference: item.reference || undefined,
-      actualWeightGrams: kgToGrams(item.actualWeightKg) ?? 0,
-      lengthMm: cmToMm(item.lengthCm),
-      widthMm: cmToMm(item.widthCm),
-      heightMm: cmToMm(item.heightCm),
-      contentDescription: item.contentDescription || values.contentDescription,
-    })),
-    declaredValueMinor: values.customs.enabled
-      ? undefined
-      : parseDeclaredGoodsValue(values.declaredValue),
-    codAmountMinor: toMinorUnits(values.codAmount),
-    insuranceRequired: values.insuranceRequired,
-    contentDescription: values.contentDescription,
-    specialInstructions: values.specialInstructions || undefined,
-    isFragile: values.isFragile,
-    isDangerousGoods: values.isDangerousGoods,
-    bookingUnitId: values.bookingUnitId || undefined,
-  });
   const getPreview = async (values: BookingValues) => {
     if (
       values.insuranceRequired &&
@@ -408,13 +424,19 @@ export default function BookingPage() {
       body: createBookingRequest(values),
     });
   };
-  const previewMutation = useMutation({
-    mutationFn: getPreview,
+  const previewMutation = useMutation<Preview, Error, PreviewInput>({
+    mutationFn: ({ values }) => getPreview(values),
     onMutate: () => {
       clearErrors(["sender.pincode", "recipient.pincode"]);
       if (preview) setPreviewStale(true);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      const current = bookingSchema.safeParse(getValues());
+      if (
+        !current.success ||
+        JSON.stringify(createBookingRequest(current.data)) !== input.requestKey
+      )
+        return;
       if (
         error instanceof ApiError &&
         (error.details.field === "sender.pincode" ||
@@ -426,14 +448,22 @@ export default function BookingPage() {
         });
       }
     },
-    onSuccess: (value) => {
+    onSuccess: (value, input) => {
+      const current = bookingSchema.safeParse(getValues());
+      if (
+        !current.success ||
+        JSON.stringify(createBookingRequest(current.data)) !== input.requestKey
+      )
+        return;
+      lastAutomaticPreview.current = input.requestKey;
       setPreview(value);
       setPreviewStale(false);
       if (value.quote.insurance?.quoteFingerprint !== acceptedFingerprint)
         setAcceptedFingerprint("");
-      document
-        .getElementById("review")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (input.reveal)
+        document
+          .getElementById("review")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
   });
   const bookingMutation = useMutation({
@@ -523,6 +553,43 @@ export default function BookingPage() {
       }
     },
   });
+  const mutatePreview = previewMutation.mutate;
+
+  useEffect(() => {
+    if (
+      success ||
+      bookingMutation.isPending ||
+      previewMutation.isPending ||
+      !bookingValues.insuranceRequired ||
+      !bookingValues.customs?.enabled
+    )
+      return;
+    const parsed = bookingSchema.safeParse(bookingValues);
+    if (!parsed.success) return;
+    const requestKey = JSON.stringify(createBookingRequest(parsed.data));
+    if (lastAutomaticPreview.current === requestKey && !previewStale) return;
+    const timer = window.setTimeout(() => {
+      lastAutomaticPreview.current = requestKey;
+      mutatePreview({
+        values: parsed.data,
+        reveal: false,
+        requestKey,
+      });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [
+    bookingMutation.isPending,
+    bookingValues,
+    mutatePreview,
+    previewMutation.isPending,
+    previewStale,
+    success,
+  ]);
+
+  const manualPreviewPending =
+    previewMutation.isPending && previewMutation.variables?.reveal !== false;
+  const automaticInsurancePending =
+    previewMutation.isPending && previewMutation.variables?.reveal === false;
 
   const selectCustomer = (customer: CustomerSummary) => {
     if (!customer.id) return;
@@ -625,7 +692,7 @@ export default function BookingPage() {
         }
       >
         <fieldset
-          disabled={previewMutation.isPending || bookingMutation.isPending}
+          disabled={manualPreviewPending || bookingMutation.isPending}
           className="min-w-0"
         >
           <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
@@ -1150,6 +1217,12 @@ export default function BookingPage() {
                     ? preview?.commercial?.customs
                     : undefined
                 }
+                confirmedInsurance={
+                  !previewStale && !previewMutation.error
+                    ? preview?.commercial?.insurance
+                    : undefined
+                }
+                insuranceCalculating={automaticInsurancePending}
               />
               <div id="review" className="scroll-mt-32 xl:hidden">
                 <ReviewSummary
@@ -1175,10 +1248,14 @@ export default function BookingPage() {
                 type="button"
                 size="lg"
                 className="w-full"
-                loading={previewMutation.isPending}
+                loading={manualPreviewPending}
                 onClick={() =>
                   void handleSubmit((values) =>
-                    previewMutation.mutate(values),
+                    previewMutation.mutate({
+                      values,
+                      reveal: true,
+                      requestKey: JSON.stringify(createBookingRequest(values)),
+                    }),
                   )()
                 }
               >
@@ -1221,10 +1298,14 @@ export default function BookingPage() {
               <Button
                 type="button"
                 className="flex-1"
-                loading={previewMutation.isPending}
+                loading={manualPreviewPending}
                 onClick={() =>
                   void handleSubmit((values) =>
-                    previewMutation.mutate(values),
+                    previewMutation.mutate({
+                      values,
+                      reveal: true,
+                      requestKey: JSON.stringify(createBookingRequest(values)),
+                    }),
                   )()
                 }
               >
@@ -1583,8 +1664,12 @@ function AddressFields({
         {prefix === "recipient" && country === "NG" ? (
           <datalist id={`${prefix}-onforwarding-cities`}>
             {onforwardingLocations.data?.data.map((location) => (
-              <option key={`${location.centreArea}-${location.city}`} value={location.city}>
-                {location.surchargeType === "R" ? "Remote" : "Extended"} via {location.centreArea}
+              <option
+                key={`${location.centreArea}-${location.city}`}
+                value={location.city}
+              >
+                {location.surchargeType === "R" ? "Remote" : "Extended"} via{" "}
+                {location.centreArea}
               </option>
             ))}
           </datalist>

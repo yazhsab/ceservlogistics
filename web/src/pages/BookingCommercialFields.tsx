@@ -310,8 +310,12 @@ export function CustomsFields({
   register,
   errors,
   confirmedCustoms,
+  confirmedInsurance,
+  insuranceCalculating = false,
 }: Props & {
   confirmedCustoms?: components["schemas"]["CustomsSummary"];
+  confirmedInsurance?: components["schemas"]["InsuranceDecision"];
+  insuranceCalculating?: boolean;
 }) {
   const customs = useWatch({ control, name: "customs" });
   const insuranceRequired = useWatch({ control, name: "insuranceRequired" });
@@ -630,7 +634,11 @@ export function CustomsFields({
                     </div>
                   ))}
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                    <dt>Insurance</dt>
+                    <dt>
+                      {insuranceRateLabel(confirmedInsurance?.quote)
+                        ? `Insurance (${insuranceRateLabel(confirmedInsurance?.quote)})`
+                        : "Insurance"}
+                    </dt>
                     <dd>
                       {confirmedCustoms
                         ? formatMoney(
@@ -638,7 +646,9 @@ export function CustomsFields({
                             customs.currency,
                           )
                         : insuranceRequired
-                          ? "Awaiting shipment preview"
+                          ? insuranceCalculating
+                            ? "Calculating from rate card…"
+                            : "Awaiting complete shipment details"
                           : "Not requested"}
                     </dd>
                   </div>
@@ -656,10 +666,9 @@ export function CustomsFields({
                 </dl>
               ) : null}
               <p className="mt-2 text-xs text-muted-foreground">
-                Calculated by the server. A successful shipment preview verifies
-                the final invoice total, currency and any insurance premium.
-                This valuation does not confirm serviceability or book a
-                shipment.
+                Calculated by the server. When insurance is requested and the
+                shipment details are complete, the configured rate-card premium
+                is added automatically. This valuation does not book a shipment.
               </p>
             </section>
             <Field
