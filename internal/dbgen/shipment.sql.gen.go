@@ -1542,8 +1542,8 @@ SELECT s.id, s.public_id, s.awb, s.reference_number, s.current_status, s.status_
        c.public_id AS customer_public_id, c.code AS customer_code, c.name AS customer_name,
        sv.code AS service_code, sv.name AS service_name,
        ob.code AS origin_branch_code, db.code AS destination_branch_code,
-       COALESCE(rac.contact_name, ras.contact_name) AS recipient_name,
-       COALESCE(rac.city_name, ras.city_name) AS recipient_city
+       COALESCE(rac.contact_name, ras.contact_name, '') AS recipient_name,
+       COALESCE(rac.city_name, ras.city_name, '') AS recipient_city
 FROM shipments s
 JOIN customers c ON c.id = s.customer_id
 JOIN courier_services sv ON sv.id = s.courier_service_id
