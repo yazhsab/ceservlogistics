@@ -11,6 +11,7 @@ import {
   Clock3,
   Download,
   FileText,
+  Pencil,
   Printer,
   Route,
   SearchX,
@@ -31,6 +32,7 @@ import {
   queryString,
   type Label,
   type Shipment,
+  type ShipmentCorrectionRequest,
   type ShipmentEvent,
   type ShipmentListResponse,
 } from "../api/client";
@@ -41,6 +43,7 @@ import { useToast } from "../components/ToastProvider";
 import {
   Badge,
   Button,
+  Checkbox,
   DataTable,
   Dialog,
   EmptyState,
@@ -56,6 +59,7 @@ import {
   StatusBadge,
   TableCell,
   TableHead,
+  Textarea,
 } from "../components/ui";
 import {
   formatDateTime,
@@ -220,6 +224,7 @@ export function ShipmentsPage() {
                   <TableHead>Weight</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Booked</TableHead>
+                  <TableHead>Action</TableHead>
                 </tr>
               </thead>
               <tbody>
@@ -282,6 +287,23 @@ export function ShipmentsPage() {
                       )}
                     </TableCell>
                     <TableCell>{formatDateTime(shipment.bookedAt)}</TableCell>
+                    <TableCell>
+                      {shipment.status === "BOOKED" &&
+                      hasPermission("shipment.edit") ? (
+                        <Button
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void navigate(`/shipments/${shipment.id}?edit=1`);
+                          }}
+                          aria-label={`Edit shipment ${shipment.awb}`}
+                        >
+                          <Pencil aria-hidden className="h-3.5 w-3.5" /> Edit
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-slate-400">Locked</span>
+                      )}
+                    </TableCell>
                   </tr>
                 ))}
               </tbody>
@@ -344,6 +366,7 @@ export function ShipmentDetailPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [labelOpen, setLabelOpen] = useState(params.get("label") === "1");
+  const [editOpen, setEditOpen] = useState(params.get("edit") === "1");
   const query = useQuery({
     queryKey: ["shipment", shipmentId],
     queryFn: () => apiRequest<Shipment>(`/api/v1/shipments/${shipmentId}`),
@@ -351,6 +374,10 @@ export function ShipmentDetailPage() {
   useEffect(() => {
     if (params.get("label") === "1") {
       setLabelOpen(true);
+      setParams({}, { replace: true });
+    }
+    if (params.get("edit") === "1") {
+      setEditOpen(true);
       setParams({}, { replace: true });
     }
   }, [params, setParams]);
@@ -402,6 +429,12 @@ export function ShipmentDetailPage() {
                 <Printer aria-hidden className="h-4 w-4" /> Label
               </Button>
             ) : null}
+            {shipment.status === "BOOKED" &&
+            hasPermission("shipment.edit") ? (
+              <Button onClick={() => setEditOpen(true)}>
+                <Pencil aria-hidden className="h-4 w-4" /> Edit
+              </Button>
+            ) : null}
             {shipment.allowedTransitions?.includes("CANCELLED") &&
             hasPermission("shipment.cancel") ? (
               <Button variant="danger" onClick={() => setCancelOpen(true)}>
@@ -443,6 +476,11 @@ export function ShipmentDetailPage() {
         loading={cancel.isPending}
         error={cancel.error}
         onConfirm={(reason) => cancel.mutate(reason)}
+      />
+      <EditShipmentDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        shipment={shipment}
       />
       <LabelDialog
         open={labelOpen}
@@ -1094,7 +1132,10 @@ function AddressCard({
 }) {
   return (
     <Panel>
-      <PanelHeader title={title} description="Immutable at booking" />
+      <PanelHeader
+        title={title}
+        description="Current waybill details; original retained in audit history"
+      />
       <div className="p-4 text-sm leading-6">
         <strong>{string(address, "contactName", "name")}</strong>
         <br />
@@ -1173,6 +1214,308 @@ function ActivityTab({ shipmentId }: { shipmentId: string }) {
         )}
       </div>
     </Panel>
+  );
+}
+
+const correctionAddressSchema = z.object({
+  contactName: z.string().trim().min(2).max(160),
+  companyName: z.string().trim().max(160),
+  phone: z.string().trim().min(7).max(24),
+  altPhone: z.string().trim().max(24),
+  email: z.union([z.literal(""), z.string().trim().email()]),
+  line1: z.string().trim().min(3).max(200),
+  line2: z.string().trim().max(200),
+  landmark: z.string().trim().max(120),
+});
+
+const shipmentCorrectionSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  referenceNumber: z.string().trim().max(64),
+  contentDescription: z.string().trim().min(2).max(500),
+  specialInstructions: z.string().trim().max(1000),
+  isFragile: z.boolean(),
+  sender: correctionAddressSchema,
+  recipient: correctionAddressSchema,
+});
+
+type ShipmentCorrectionForm = z.infer<typeof shipmentCorrectionSchema>;
+
+function correctionDefaults(shipment: Shipment): ShipmentCorrectionForm {
+  const address = (role: "sender" | "recipient", key: string) =>
+    string(shipment.addresses?.[role], key);
+  const correctedAddress = (role: "sender" | "recipient") => ({
+    contactName: address(role, "contactName"),
+    companyName: address(role, "companyName"),
+    phone: address(role, "phone"),
+    altPhone: address(role, "altPhone"),
+    email: address(role, "email"),
+    line1: address(role, "line1"),
+    line2: address(role, "line2"),
+    landmark: address(role, "landmark"),
+  });
+  return {
+    reason: "",
+    referenceNumber: shipment.referenceNumber ?? "",
+    contentDescription: shipment.contentDescription ?? "",
+    specialInstructions: shipment.specialInstructions ?? "",
+    isFragile: shipment.isFragile ?? false,
+    sender: correctedAddress("sender"),
+    recipient: correctedAddress("recipient"),
+  };
+}
+
+function EditShipmentDialog({
+  open,
+  onOpenChange,
+  shipment,
+}: {
+  open: boolean;
+  onOpenChange: (value: boolean) => void;
+  shipment: Shipment;
+}) {
+  const client = useQueryClient();
+  const { toast } = useToast();
+  const form = useForm<ShipmentCorrectionForm>({
+    resolver: zodResolver(shipmentCorrectionSchema),
+    defaultValues: correctionDefaults(shipment),
+  });
+  useEffect(() => {
+    if (open) form.reset(correctionDefaults(shipment));
+  }, [form, open, shipment]);
+  const mutation = useMutation({
+    mutationFn: (values: ShipmentCorrectionForm) =>
+      apiRequest<Shipment>(`/api/v1/shipments/${shipment.id}`, {
+        method: "PATCH",
+        body: {
+          ...values,
+          expectedVersion: shipment.version ?? 1,
+        } satisfies ShipmentCorrectionRequest,
+      }),
+    onSuccess: (updated) => {
+      client.setQueryData(["shipment", shipment.id], updated);
+      void client.invalidateQueries({ queryKey: ["shipments"] });
+      void client.invalidateQueries({
+        queryKey: ["shipment-label", shipment.id],
+      });
+      toast({
+        tone: "success",
+        title: "Shipment corrected",
+        description: `${shipment.awb} keeps the same tracking number. Reprint its labels.`,
+      });
+      onOpenChange(false);
+    },
+  });
+  const errors = form.formState.errors;
+  const lockedAddress = (role: "sender" | "recipient") => {
+    const address = shipment.addresses?.[role];
+    return [
+      string(address, "city"),
+      string(address, "state"),
+      string(address, "pincode"),
+      string(address, "countryCode"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Edit shipment ${shipment.awb ?? ""}`}
+      description="Correct non-routing details before pickup. The AWB stays the same and the change is recorded in shipment history."
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Keep unchanged</Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending}
+            onClick={() => void form.handleSubmit((values) => mutation.mutate(values))()}
+          >
+            Save correction
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="space-y-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit((values) => mutation.mutate(values))();
+        }}
+      >
+        <div className="rounded-md border border-info/30 bg-blue-50 px-3 py-2 text-xs leading-5 text-slate-700">
+          Postal codes, cities, service, weight, payment, declared value and
+          price stay locked because they determine the route and charge.
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Customer reference"
+            htmlFor="correction-reference"
+            hint="Optional"
+            error={errors.referenceNumber?.message}
+          >
+            <Input
+              id="correction-reference"
+              {...form.register("referenceNumber")}
+            />
+          </Field>
+          <Field
+            label="Correction reason"
+            htmlFor="correction-reason"
+            required
+            error={errors.reason?.message}
+          >
+            <Input
+              id="correction-reason"
+              placeholder="Example: corrected recipient phone"
+              {...form.register("reason")}
+            />
+          </Field>
+        </div>
+        <Field
+          label="Contents description"
+          htmlFor="correction-contents"
+          required
+          error={errors.contentDescription?.message}
+        >
+          <Input
+            id="correction-contents"
+            {...form.register("contentDescription")}
+          />
+        </Field>
+        <Field
+          label="Special instructions"
+          htmlFor="correction-instructions"
+          hint="Optional"
+          error={errors.specialInstructions?.message}
+        >
+          <Textarea
+            id="correction-instructions"
+            className="min-h-20"
+            {...form.register("specialInstructions")}
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <Checkbox
+            aria-label="Fragile shipment"
+            checked={form.watch("isFragile")}
+            onCheckedChange={(checked) =>
+              form.setValue("isFragile", checked, { shouldDirty: true })
+            }
+          />
+          Fragile shipment
+        </label>
+
+        {(["sender", "recipient"] as const).map((role) => (
+          <fieldset key={role} className="space-y-4 border-t pt-4">
+            <legend className="text-sm font-semibold capitalize">
+              {role} details
+            </legend>
+            <p className="text-xs text-slate-500">
+              Locked route: {lockedAddress(role)}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Contact name"
+                htmlFor={`${role}-correction-name`}
+                required
+                error={errors[role]?.contactName?.message}
+              >
+                <Input
+                  id={`${role}-correction-name`}
+                  {...form.register(`${role}.contactName`)}
+                />
+              </Field>
+              <Field
+                label="Company"
+                htmlFor={`${role}-correction-company`}
+                hint="Optional"
+                error={errors[role]?.companyName?.message}
+              >
+                <Input
+                  id={`${role}-correction-company`}
+                  {...form.register(`${role}.companyName`)}
+                />
+              </Field>
+              <Field
+                label="Phone"
+                htmlFor={`${role}-correction-phone`}
+                required
+                error={errors[role]?.phone?.message}
+              >
+                <Input
+                  id={`${role}-correction-phone`}
+                  inputMode="tel"
+                  {...form.register(`${role}.phone`)}
+                />
+              </Field>
+              <Field
+                label="Alternative phone"
+                htmlFor={`${role}-correction-alt-phone`}
+                hint="Optional"
+                error={errors[role]?.altPhone?.message}
+              >
+                <Input
+                  id={`${role}-correction-alt-phone`}
+                  inputMode="tel"
+                  {...form.register(`${role}.altPhone`)}
+                />
+              </Field>
+              <Field
+                label="Email"
+                htmlFor={`${role}-correction-email`}
+                hint="Optional"
+                error={errors[role]?.email?.message}
+              >
+                <Input
+                  id={`${role}-correction-email`}
+                  type="email"
+                  {...form.register(`${role}.email`)}
+                />
+              </Field>
+              <Field
+                label="Landmark"
+                htmlFor={`${role}-correction-landmark`}
+                hint="Optional"
+                error={errors[role]?.landmark?.message}
+              >
+                <Input
+                  id={`${role}-correction-landmark`}
+                  {...form.register(`${role}.landmark`)}
+                />
+              </Field>
+            </div>
+            <Field
+              label="Address line 1"
+              htmlFor={`${role}-correction-line1`}
+              required
+              error={errors[role]?.line1?.message}
+            >
+              <Input
+                id={`${role}-correction-line1`}
+                {...form.register(`${role}.line1`)}
+              />
+            </Field>
+            <Field
+              label="Address line 2"
+              htmlFor={`${role}-correction-line2`}
+              hint="Optional"
+              error={errors[role]?.line2?.message}
+            >
+              <Input
+                id={`${role}-correction-line2`}
+                {...form.register(`${role}.line2`)}
+              />
+            </Field>
+          </fieldset>
+        ))}
+        {mutation.error ? (
+          <p role="alert" className="text-sm text-danger">
+            {mutation.error.message}
+          </p>
+        ) : null}
+      </form>
+    </Dialog>
   );
 }
 

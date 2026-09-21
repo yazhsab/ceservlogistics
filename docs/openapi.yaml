@@ -2528,6 +2528,37 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Shipment" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Shipments]
+      summary: Correct non-routing shipment details before pickup
+      description: |
+        Requires `shipment.edit`. Retains the AWB and corrects only fields that
+        do not affect serviceability, routing, pricing, payment, customs or
+        physical package identity. The shipment must still be `BOOKED`.
+
+        Original booking addresses remain immutable. Each correction is an
+        append-only overlay with a mandatory reason, shipment event and audit
+        record. `expectedVersion` prevents one operator from overwriting a
+        correction made by another operator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ShipmentCorrectionRequest" }
+      responses:
+        "200":
+          description: Corrected shipment with the same AWB.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Shipment" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Shipment movement has started or the supplied version is stale.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /api/v1/shipments/{shipmentId}/events:
     parameters:
@@ -10505,6 +10536,37 @@ components:
             address snapshot.
         latitude: { type: number }
         longitude: { type: number }
+    ShipmentCorrectionAddress:
+      type: object
+      additionalProperties: false
+      required: [contactName, phone, line1]
+      properties:
+        contactName: { type: string, minLength: 2, maxLength: 160 }
+        companyName: { type: string, maxLength: 160 }
+        phone: { type: string }
+        altPhone: { type: string }
+        email: { type: string, format: email }
+        line1: { type: string, minLength: 3, maxLength: 200 }
+        line2: { type: string, maxLength: 200 }
+        landmark: { type: string, maxLength: 120 }
+    ShipmentCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedVersion
+        - reason
+        - contentDescription
+        - sender
+        - recipient
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
+        reason: { type: string, minLength: 5, maxLength: 500 }
+        referenceNumber: { type: string, maxLength: 64 }
+        contentDescription: { type: string, minLength: 2, maxLength: 500 }
+        specialInstructions: { type: string, maxLength: 1000 }
+        isFragile: { type: boolean }
+        sender: { $ref: "#/components/schemas/ShipmentCorrectionAddress" }
+        recipient: { $ref: "#/components/schemas/ShipmentCorrectionAddress" }
     ShipmentListItem:
       type: object
       properties:
@@ -10554,6 +10616,10 @@ components:
         paymentMode: { $ref: "#/components/schemas/PaymentMode" }
         bookedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+        version:
+          type: integer
+          minimum: 1
+          description: Optimistic concurrency version used by shipment correction.
         customer:
           type: object
           properties: { id: { type: string }, code: { type: string }, name: { type: string } }

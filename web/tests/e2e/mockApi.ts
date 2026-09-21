@@ -3,6 +3,7 @@ import type { Page, Route } from "@playwright/test";
 export const allPermissions = [
   "shipment.read",
   "shipment.create",
+  "shipment.edit",
   "shipment.cancel",
   "shipment.label",
   "operating_unit.read",
@@ -143,6 +144,7 @@ export const shipment = {
   paymentMode: "PREPAID",
   bookedAt: "2026-08-08T10:00:00+05:30",
   createdAt: "2026-08-08T10:00:00+05:30",
+  version: 3,
   customer: { id: "cus_test_01", code: "ACME", name: "Acme Retail" },
   service: { id: "svc_test_01", code: "EXPRESS", name: "Express Air" },
   origin: {
@@ -230,6 +232,7 @@ export const shipment = {
       city: "Lagos",
       state: "Lagos",
       pincode: "100001",
+      countryCode: "NG",
     },
     recipient: {
       contactName: "Amina Bello",
@@ -238,6 +241,7 @@ export const shipment = {
       city: "Abuja",
       state: "Federal Capital Territory",
       pincode: "900001",
+      countryCode: "NG",
     },
   },
   pieceCount: 1,
@@ -872,6 +876,7 @@ export async function installMockApi(
   },
 ) {
   let shipmentPosts = 0;
+  let lastShipmentCorrection: Record<string, unknown> | undefined;
   let pickupStatus = pickupFixture.status;
   let pickupAgent: { id: string; code: string; name: string } | undefined;
   let bagStatus = bagFixture.status;
@@ -2232,8 +2237,28 @@ export async function installMockApi(
         );
       return json(route, shipment, 201);
     }
-    if (path === `/api/v1/shipments/${shipment.id}`)
+    if (path === `/api/v1/shipments/${shipment.id}` && method === "GET")
       return json(route, shipment);
+    if (path === `/api/v1/shipments/${shipment.id}` && method === "PATCH") {
+      lastShipmentCorrection = request.postDataJSON() as Record<string, unknown>;
+      const sender = lastShipmentCorrection.sender as Record<string, unknown>;
+      const recipient = lastShipmentCorrection.recipient as Record<
+        string,
+        unknown
+      >;
+      return json(route, {
+        ...shipment,
+        version: shipment.version + 1,
+        referenceNumber: lastShipmentCorrection.referenceNumber,
+        contentDescription: lastShipmentCorrection.contentDescription,
+        specialInstructions: lastShipmentCorrection.specialInstructions,
+        isFragile: lastShipmentCorrection.isFragile,
+        addresses: {
+          sender: { ...shipment.addresses.sender, ...sender },
+          recipient: { ...shipment.addresses.recipient, ...recipient },
+        },
+      });
+    }
     if (path.endsWith("/events"))
       return json(route, {
         data: [
@@ -2880,6 +2905,9 @@ export async function installMockApi(
   return {
     get shipmentPosts() {
       return shipmentPosts;
+    },
+    get lastShipmentCorrection() {
+      return lastShipmentCorrection;
     },
   };
 }

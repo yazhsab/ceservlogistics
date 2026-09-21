@@ -169,3 +169,60 @@ test("shipment search, detail, label, and cancellation", async ({ page }) => {
   await page.getByRole("button", { name: "Cancel shipment" }).click();
   await expect(page.getByText("Shipment cancelled")).toBeVisible();
 });
+
+test("booked shipment can be corrected from the Edit column without changing its AWB", async ({
+  page,
+}) => {
+  let correction: Record<string, unknown> | undefined;
+  await page.route(
+    `**/api/v1/shipments/${shipment.id}`,
+    async (route, request) => {
+      if (request.method() !== "PATCH") return route.fallback();
+      correction = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...shipment,
+          version: shipment.version + 1,
+          referenceNumber: correction.referenceNumber,
+          addresses: {
+            ...shipment.addresses,
+            recipient: {
+              ...shipment.addresses.recipient,
+              ...(correction.recipient as Record<string, unknown>),
+            },
+          },
+        }),
+      });
+    },
+  );
+  await login(page);
+  await expect(page.getByRole("columnheader", { name: "Action" })).toBeVisible();
+  await page.getByLabel(`Edit shipment ${shipment.awb}`).click();
+  const dialog = page.getByRole("dialog", {
+    name: `Edit shipment ${shipment.awb}`,
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/Locked route: Lagos/)).toBeVisible();
+  await dialog.getByLabel("Customer reference").fill("WEB-001-CORRECTED");
+  await dialog
+    .getByLabel("Correction reason")
+    .fill("Corrected recipient contact details");
+  await dialog.locator("#recipient-correction-phone").fill("08039990000");
+  await dialog
+    .locator("#recipient-correction-line1")
+    .fill("21 Corrected Gimbiya Street");
+  await dialog.getByRole("button", { name: "Save correction" }).click();
+  await expect(page.getByText("Shipment corrected")).toBeVisible();
+  expect(correction).toMatchObject({
+    expectedVersion: 3,
+    reason: "Corrected recipient contact details",
+    referenceNumber: "WEB-001-CORRECTED",
+    recipient: {
+      phone: "08039990000",
+      line1: "21 Corrected Gimbiya Street",
+    },
+  });
+  await expect(page.getByRole("heading", { name: shipment.awb })).toBeVisible();
+});

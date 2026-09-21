@@ -114,6 +114,99 @@ func TestBookingProducesCompleteRecord(t *testing.T) {
 	}
 }
 
+func TestBookedShipmentCorrectionKeepsAWBAndOriginalSnapshots(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	geo := env.Geography(t)
+	tn := env.NewTenant(t, geo, harness.TenantOptions{Code: "EDIT1"})
+	ctx := context.Background()
+
+	booked := env.Do(t, http.MethodPost, "/api/v1/shipments", tn.AdminAccessTok,
+		tn.BookingBody(map[string]any{"referenceNumber": "WEB-OLD"}))
+	if booked.Status != http.StatusCreated {
+		t.Fatalf("booking failed: %d %s", booked.Status, booked.Raw)
+	}
+	shipmentID, _ := booked.Body["id"].(string)
+	awb, _ := booked.Body["awb"].(string)
+	version, _ := booked.Body["version"].(float64)
+	total := booked.Body["totalAmountMinor"]
+
+	correction := map[string]any{
+		"expectedVersion":     int(version),
+		"reason":              "Corrected recipient contact details",
+		"referenceNumber":     "WEB-CORRECTED",
+		"contentDescription":  "Corrected documents",
+		"specialInstructions": "Call the corrected recipient before delivery",
+		"isFragile":           true,
+		"sender": map[string]any{
+			"contactName": "Corrected Sender", "phone": "+2348011111111",
+			"line1": "15 Corrected Origin Street",
+		},
+		"recipient": map[string]any{
+			"contactName": "Corrected Recipient", "phone": "+2348022222222",
+			"line1": "27 Corrected Destination Road", "landmark": "Blue gate",
+		},
+	}
+	updated := env.Do(t, http.MethodPatch, "/api/v1/shipments/"+shipmentID,
+		tn.AdminAccessTok, correction)
+	if updated.Status != http.StatusOK {
+		t.Fatalf("correction failed: %d %s", updated.Status, updated.Raw)
+	}
+	if updated.Body["awb"] != awb {
+		t.Fatalf("correction changed AWB: got %v want %s", updated.Body["awb"], awb)
+	}
+	if updated.Body["totalAmountMinor"] != total {
+		t.Fatalf("correction changed price: got %v want %v", updated.Body["totalAmountMinor"], total)
+	}
+	if updated.Body["referenceNumber"] != "WEB-CORRECTED" || updated.Body["isFragile"] != true {
+		t.Fatalf("corrected shipment fields missing: %v", updated.Body)
+	}
+	addresses, _ := updated.Body["addresses"].(map[string]any)
+	recipient, _ := addresses["recipient"].(map[string]any)
+	if recipient["phone"] != "+2348022222222" || recipient["pincode"] != tn.DestPincode {
+		t.Fatalf("recipient correction or locked route missing: %v", recipient)
+	}
+
+	label := env.Do(t, http.MethodGet, "/api/v1/shipments/"+shipmentID+"/label",
+		tn.AdminAccessTok, nil)
+	labelRecipient, _ := label.Body["recipient"].(map[string]any)
+	if label.Status != http.StatusOK || labelRecipient["name"] != "Corrected Recipient" ||
+		labelRecipient["line1"] != "27 Corrected Destination Road" {
+		t.Fatalf("waybill did not use corrected details: %d %v", label.Status, label.Body)
+	}
+
+	var originalName string
+	if err := env.DB.Pool.QueryRow(ctx, `
+		SELECT a.contact_name FROM shipment_address_snapshots a
+		JOIN shipments s ON s.id = a.shipment_id
+		WHERE s.public_id = $1 AND a.role = 'RECIPIENT'`, shipmentID).Scan(&originalName); err != nil {
+		t.Fatal(err)
+	}
+	if originalName != "Recipient Name" {
+		t.Fatalf("immutable booking snapshot was rewritten: %q", originalName)
+	}
+	var correctionCount, auditCount int
+	if err := env.DB.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM shipment_address_corrections c JOIN shipments s ON s.id=c.shipment_id WHERE s.public_id=$1`,
+		shipmentID).Scan(&correctionCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.DB.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM audit_events WHERE action='shipment.corrected' AND resource_public_id=$1`,
+		shipmentID).Scan(&auditCount); err != nil {
+		t.Fatal(err)
+	}
+	if correctionCount != 2 || auditCount != 1 {
+		t.Fatalf("correction evidence missing: address rows=%d audit rows=%d", correctionCount, auditCount)
+	}
+
+	stale := env.Do(t, http.MethodPatch, "/api/v1/shipments/"+shipmentID,
+		tn.AdminAccessTok, correction)
+	if stale.Status != http.StatusConflict || stale.ErrorCode() != "CONCURRENT_MODIFICATION" {
+		t.Fatalf("stale correction accepted: %d %s", stale.Status, stale.Raw)
+	}
+}
+
 func TestBookingUsesOneCountryForPostcodeResolutionAndSnapshots(t *testing.T) {
 	env := harness.Start(t)
 	env.Reset(t)

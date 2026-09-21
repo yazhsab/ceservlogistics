@@ -49,6 +49,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.With(auth.RequirePermission("shipment.read")).Get("/", httpx.Wrap(h.list))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}", httpx.Wrap(h.get))
 	r.With(auth.RequirePermission("shipment.read")).Get("/{shipmentId}/events", httpx.Wrap(h.events))
+	r.With(auth.RequirePermission("shipment.edit")).Patch("/{shipmentId}", httpx.Wrap(h.correct))
 	r.With(auth.RequirePermission("shipment.cancel")).Post("/{shipmentId}/cancel", httpx.Wrap(h.cancel))
 	r.With(auth.RequirePermission("shipment.label")).Get("/{shipmentId}/label", httpx.Wrap(h.label))
 }
@@ -65,6 +66,7 @@ type Detail struct {
 	PaymentMode     string    `json:"paymentMode"`
 	BookedAt        time.Time `json:"bookedAt"`
 	CreatedAt       time.Time `json:"createdAt"`
+	Version         int32     `json:"version"`
 
 	Customer Ref `json:"customer"`
 	Service  Ref `json:"service"`
@@ -475,6 +477,30 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) error {
 	return httpx.OK(w, detail)
 }
 
+func (h *Handler) correct(w http.ResponseWriter, r *http.Request) error {
+	p, err := tenant.Require(r)
+	if err != nil {
+		return err
+	}
+	shipmentID, err := httpx.PathPublicID(r, "shipmentId", publicid.PrefixShipment, "Shipment")
+	if err != nil {
+		return err
+	}
+	body, err := ReadBody(w, r)
+	if err != nil {
+		return err
+	}
+	var req CorrectionRequest
+	if err := DecodeStrict(body, &req); err != nil {
+		return err
+	}
+	detail, err := h.booker.Correct(r.Context(), p, shipmentID, req)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, detail)
+}
+
 func (h *Handler) events(w http.ResponseWriter, r *http.Request) error {
 	p, err := tenant.Require(r)
 	if err != nil {
@@ -633,7 +659,7 @@ func (b *Booker) buildDetail(ctx context.Context, q *dbgen.Queries, s dbgen.Ship
 func (b *Booker) loadDetail(ctx context.Context, q *dbgen.Queries, s dbgen.GetShipmentByPublicIDRow) (*Detail, error) {
 	d := &Detail{
 		ID: s.PublicID, AWB: s.Awb, Status: s.CurrentStatus, StatusChangedAt: s.StatusChangedAt,
-		PaymentMode: s.PaymentMode, BookedAt: s.BookedAt, CreatedAt: s.CreatedAt,
+		PaymentMode: s.PaymentMode, BookedAt: s.BookedAt, CreatedAt: s.CreatedAt, Version: s.Version,
 		Customer: Ref{ID: s.CustomerPublicID, Code: s.CustomerCode, Name: s.CustomerName},
 		Service:  Ref{ID: s.ServicePublicID, Code: s.ServiceCode, Name: s.ServiceName},
 		Origin: Endpoint{
@@ -726,18 +752,18 @@ func (b *Booker) loadDetail(ctx context.Context, q *dbgen.Queries, s dbgen.GetSh
 		return nil, apierr.Internal(rErr)
 	}
 
-	addresses, err := q.ListShipmentAddressSnapshots(ctx, s.ID)
+	addresses, err := currentCorrectionAddresses(ctx, q, s.ID)
 	if err != nil {
-		return nil, apierr.Internal(err)
+		return nil, err
 	}
 	if len(addresses) > 0 {
 		d.Addresses = map[string]any{}
-		for _, a := range addresses {
-			d.Addresses[snakeToCamel(a.Role)] = map[string]any{
+		for role, a := range addresses {
+			d.Addresses[snakeToCamel(role)] = map[string]any{
 				"contactName": a.ContactName, "companyName": a.CompanyName,
 				"phone": a.Phone, "altPhone": a.AltPhone, "email": a.Email,
 				"line1": a.Line1, "line2": a.Line2, "landmark": a.Landmark,
-				"city": a.CityName, "state": a.StateName, "pincode": a.Pincode,
+				"city": a.City, "state": a.State, "pincode": a.Pincode,
 				"countryCode": a.CountryCode,
 			}
 		}

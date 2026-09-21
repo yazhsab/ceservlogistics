@@ -132,6 +132,21 @@ func buildLabel(d dbgen.GetShipmentLabelDataRow, packages []dbgen.ShipmentPackag
 		Line1: deref(d.RecipientLine1), Line2: deref(d.RecipientLine2), Landmark: deref(d.RecipientLandmark),
 		City: deref(d.RecipientCity), State: deref(d.RecipientState), Pincode: deref(d.RecipientPincode),
 	}
+	if d.SenderCorrectionID != 0 {
+		l.Sender.Name = d.CorrectedSenderName
+		l.Sender.Company = deref(d.CorrectedSenderCompany)
+		l.Sender.Phone = d.CorrectedSenderPhone
+		l.Sender.Line1 = d.CorrectedSenderLine1
+		l.Sender.Line2 = deref(d.CorrectedSenderLine2)
+	}
+	if d.RecipientCorrectionID != 0 {
+		l.Recipient.Name = d.CorrectedRecipientName
+		l.Recipient.Company = deref(d.CorrectedRecipientCompany)
+		l.Recipient.Phone = d.CorrectedRecipientPhone
+		l.Recipient.Line1 = d.CorrectedRecipientLine1
+		l.Recipient.Line2 = deref(d.CorrectedRecipientLine2)
+		l.Recipient.Landmark = deref(d.CorrectedRecipientLandmark)
+	}
 
 	// Compact, fixed-order QR payload. Version-prefixed so a scanner can detect
 	// a format change rather than misparse it.

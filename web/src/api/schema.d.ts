@@ -4081,7 +4081,55 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Correct non-routing shipment details before pickup
+     * @description Requires `shipment.edit`. Retains the AWB and corrects only fields that
+     *     do not affect serviceability, routing, pricing, payment, customs or
+     *     physical package identity. The shipment must still be `BOOKED`.
+     *
+     *     Original booking addresses remain immutable. Each correction is an
+     *     append-only overlay with a mandatory reason, shipment event and audit
+     *     record. `expectedVersion` prevents one operator from overwriting a
+     *     correction made by another operator.
+     */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          shipmentId: components["parameters"]["ShipmentId"];
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["ShipmentCorrectionRequest"];
+        };
+      };
+      responses: {
+        /** @description Corrected shipment with the same AWB. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["Shipment"];
+          };
+        };
+        403: components["responses"]["Forbidden"];
+        404: components["responses"]["NotFound"];
+        /** @description Shipment movement has started or the supplied version is stale. */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["ErrorEnvelope"];
+          };
+        };
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
     trace?: never;
   };
   "/api/v1/shipments/{shipmentId}/events": {
@@ -10208,6 +10256,27 @@ export interface components {
       latitude?: number;
       longitude?: number;
     };
+    ShipmentCorrectionAddress: {
+      contactName: string;
+      companyName?: string;
+      phone: string;
+      altPhone?: string;
+      /** Format: email */
+      email?: string;
+      line1: string;
+      line2?: string;
+      landmark?: string;
+    };
+    ShipmentCorrectionRequest: {
+      expectedVersion: number;
+      reason: string;
+      referenceNumber?: string;
+      contentDescription: string;
+      specialInstructions?: string;
+      isFragile?: boolean;
+      sender: components["schemas"]["ShipmentCorrectionAddress"];
+      recipient: components["schemas"]["ShipmentCorrectionAddress"];
+    };
     ShipmentListItem: {
       id?: string;
       awb?: string;
@@ -10258,6 +10327,8 @@ export interface components {
       bookedAt?: string;
       /** Format: date-time */
       createdAt?: string;
+      /** @description Optimistic concurrency version used by shipment correction. */
+      version?: number;
       customer?: {
         id?: string;
         code?: string;

@@ -935,6 +935,52 @@ type District struct {
 	UpdatedAt time.Time
 }
 
+type DomesticOnforwardingLocation struct {
+	ID                   int64
+	PublicID             string
+	OrganizationID       int64
+	RateCardVersionID    int64
+	DestinationStateID   int64
+	CityName             string
+	NormalizedCityName   string
+	CentreArea           string
+	RateZoneCode         string
+	SurchargeCode        string
+	SurchargeType        string
+	SurchargeAmountMinor int64
+	SourceRowID          int32
+	CreatedAt            time.Time
+}
+
+type DomesticStateRateZone struct {
+	ID                 int64
+	PublicID           string
+	OrganizationID     int64
+	RateCardVersionID  int64
+	OriginStateID      int64
+	DestinationStateID int64
+	RateZoneCode       string
+	CreatedAt          time.Time
+}
+
+type DomesticWeightSlab struct {
+	ID                   int64
+	PublicID             string
+	OrganizationID       int64
+	RateCardVersionID    int64
+	CourierServiceID     int64
+	OriginStateID        int64
+	RateZoneCode         string
+	FromWeightGrams      int32
+	ToWeightGrams        *int32
+	PriceMinor           int64
+	AdditionalStepGrams  *int32
+	AdditionalPriceMinor *int64
+	SourceSheet          string
+	SourceCell           string
+	CreatedAt            time.Time
+}
+
 type Driver struct {
 	ID             int64
 	PublicID       string
@@ -2445,6 +2491,31 @@ type Shipment struct {
 	PickedUpAt            *time.Time
 	IsHeld                bool
 	HoldReason            *string
+}
+
+type ShipmentAddressCorrection struct {
+	ID                int64
+	PublicID          string
+	OrganizationID    int64
+	ShipmentID        int64
+	Role              string
+	Sequence          int32
+	ContactName       string
+	CompanyName       *string
+	Phone             string
+	AltPhone          *string
+	Email             *string
+	Line1             string
+	Line2             *string
+	Landmark          *string
+	CityName          string
+	StateName         string
+	Pincode           string
+	CountryCode       string
+	Reason            string
+	CorrectedByUserID *int64
+	RequestID         *string
+	CreatedAt         time.Time
 }
 
 type ShipmentAddressSnapshot struct {

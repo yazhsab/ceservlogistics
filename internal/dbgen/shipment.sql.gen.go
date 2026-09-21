@@ -1145,7 +1145,20 @@ SELECT s.public_id, s.awb, s.reference_number, s.current_status, s.payment_mode,
        snd.state_name AS sender_state, snd.pincode AS sender_pincode,
        rcp.contact_name AS recipient_name, rcp.company_name AS recipient_company, rcp.phone AS recipient_phone,
        rcp.line1 AS recipient_line1, rcp.line2 AS recipient_line2, rcp.landmark AS recipient_landmark,
-       rcp.city_name AS recipient_city, rcp.state_name AS recipient_state, rcp.pincode AS recipient_pincode
+       rcp.city_name AS recipient_city, rcp.state_name AS recipient_state, rcp.pincode AS recipient_pincode,
+       COALESCE(sndc.id, 0) AS sender_correction_id,
+       COALESCE(sndc.contact_name, '') AS corrected_sender_name,
+       sndc.company_name AS corrected_sender_company,
+       COALESCE(sndc.phone, '') AS corrected_sender_phone,
+       COALESCE(sndc.line1, '') AS corrected_sender_line1,
+       sndc.line2 AS corrected_sender_line2,
+       COALESCE(rcpc.id, 0) AS recipient_correction_id,
+       COALESCE(rcpc.contact_name, '') AS corrected_recipient_name,
+       rcpc.company_name AS corrected_recipient_company,
+       COALESCE(rcpc.phone, '') AS corrected_recipient_phone,
+       COALESCE(rcpc.line1, '') AS corrected_recipient_line1,
+       rcpc.line2 AS corrected_recipient_line2,
+       rcpc.landmark AS corrected_recipient_landmark
 FROM shipments s
 JOIN courier_services sv ON sv.id = s.courier_service_id
 JOIN customers c ON c.id = s.customer_id
@@ -1155,6 +1168,16 @@ LEFT JOIN operating_units oh ON oh.id = s.origin_hub_id
 LEFT JOIN operating_units dh ON dh.id = s.destination_hub_id
 LEFT JOIN shipment_address_snapshots snd ON snd.shipment_id = s.id AND snd.role = 'SENDER'
 LEFT JOIN shipment_address_snapshots rcp ON rcp.shipment_id = s.id AND rcp.role = 'RECIPIENT'
+LEFT JOIN LATERAL (
+    SELECT id, public_id, organization_id, shipment_id, role, sequence, contact_name, company_name, phone, alt_phone, email, line1, line2, landmark, city_name, state_name, pincode, country_code, reason, corrected_by_user_id, request_id, created_at FROM shipment_address_corrections
+    WHERE shipment_id = s.id AND role = 'SENDER'
+    ORDER BY sequence DESC LIMIT 1
+) sndc ON true
+LEFT JOIN LATERAL (
+    SELECT id, public_id, organization_id, shipment_id, role, sequence, contact_name, company_name, phone, alt_phone, email, line1, line2, landmark, city_name, state_name, pincode, country_code, reason, corrected_by_user_id, request_id, created_at FROM shipment_address_corrections
+    WHERE shipment_id = s.id AND role = 'RECIPIENT'
+    ORDER BY sequence DESC LIMIT 1
+) rcpc ON true
 WHERE s.public_id = $1 AND s.organization_id = $2
 `
 
@@ -1164,53 +1187,66 @@ type GetShipmentLabelDataParams struct {
 }
 
 type GetShipmentLabelDataRow struct {
-	PublicID              string
-	Awb                   string
-	ReferenceNumber       *string
-	CurrentStatus         string
-	PaymentMode           string
-	PieceCount            int32
-	ActualWeightGrams     int32
-	ChargeableWeightGrams int32
-	Currency              string
-	CodAmountMinor        int64
-	DeclaredValueMinor    int64
-	TotalAmountMinor      int64
-	OriginPincode         string
-	DestinationPincode    string
-	BookedAt              time.Time
-	PromisedDeliveryAt    *time.Time
-	ContentDescription    string
-	SpecialInstructions   *string
-	IsFragile             bool
-	ServiceCode           string
-	ServiceName           string
-	ServiceMode           string
-	OriginBranchCode      *string
-	OriginBranchName      *string
-	DestinationBranchCode *string
-	DestinationBranchName *string
-	OriginHubCode         *string
-	DestinationHubCode    *string
-	CustomerName          string
-	CustomerCode          string
-	SenderName            *string
-	SenderCompany         *string
-	SenderPhone           *string
-	SenderLine1           *string
-	SenderLine2           *string
-	SenderCity            *string
-	SenderState           *string
-	SenderPincode         *string
-	RecipientName         *string
-	RecipientCompany      *string
-	RecipientPhone        *string
-	RecipientLine1        *string
-	RecipientLine2        *string
-	RecipientLandmark     *string
-	RecipientCity         *string
-	RecipientState        *string
-	RecipientPincode      *string
+	PublicID                   string
+	Awb                        string
+	ReferenceNumber            *string
+	CurrentStatus              string
+	PaymentMode                string
+	PieceCount                 int32
+	ActualWeightGrams          int32
+	ChargeableWeightGrams      int32
+	Currency                   string
+	CodAmountMinor             int64
+	DeclaredValueMinor         int64
+	TotalAmountMinor           int64
+	OriginPincode              string
+	DestinationPincode         string
+	BookedAt                   time.Time
+	PromisedDeliveryAt         *time.Time
+	ContentDescription         string
+	SpecialInstructions        *string
+	IsFragile                  bool
+	ServiceCode                string
+	ServiceName                string
+	ServiceMode                string
+	OriginBranchCode           *string
+	OriginBranchName           *string
+	DestinationBranchCode      *string
+	DestinationBranchName      *string
+	OriginHubCode              *string
+	DestinationHubCode         *string
+	CustomerName               string
+	CustomerCode               string
+	SenderName                 *string
+	SenderCompany              *string
+	SenderPhone                *string
+	SenderLine1                *string
+	SenderLine2                *string
+	SenderCity                 *string
+	SenderState                *string
+	SenderPincode              *string
+	RecipientName              *string
+	RecipientCompany           *string
+	RecipientPhone             *string
+	RecipientLine1             *string
+	RecipientLine2             *string
+	RecipientLandmark          *string
+	RecipientCity              *string
+	RecipientState             *string
+	RecipientPincode           *string
+	SenderCorrectionID         int64
+	CorrectedSenderName        string
+	CorrectedSenderCompany     *string
+	CorrectedSenderPhone       string
+	CorrectedSenderLine1       string
+	CorrectedSenderLine2       *string
+	RecipientCorrectionID      int64
+	CorrectedRecipientName     string
+	CorrectedRecipientCompany  *string
+	CorrectedRecipientPhone    string
+	CorrectedRecipientLine1    string
+	CorrectedRecipientLine2    *string
+	CorrectedRecipientLandmark *string
 }
 
 // GetShipmentLabelData assembles everything a label needs in one round trip:
@@ -1266,6 +1302,19 @@ func (q *Queries) GetShipmentLabelData(ctx context.Context, arg GetShipmentLabel
 		&i.RecipientCity,
 		&i.RecipientState,
 		&i.RecipientPincode,
+		&i.SenderCorrectionID,
+		&i.CorrectedSenderName,
+		&i.CorrectedSenderCompany,
+		&i.CorrectedSenderPhone,
+		&i.CorrectedSenderLine1,
+		&i.CorrectedSenderLine2,
+		&i.RecipientCorrectionID,
+		&i.CorrectedRecipientName,
+		&i.CorrectedRecipientCompany,
+		&i.CorrectedRecipientPhone,
+		&i.CorrectedRecipientLine1,
+		&i.CorrectedRecipientLine2,
+		&i.CorrectedRecipientLandmark,
 	)
 	return i, err
 }
@@ -1493,13 +1542,20 @@ SELECT s.id, s.public_id, s.awb, s.reference_number, s.current_status, s.status_
        c.public_id AS customer_public_id, c.code AS customer_code, c.name AS customer_name,
        sv.code AS service_code, sv.name AS service_name,
        ob.code AS origin_branch_code, db.code AS destination_branch_code,
-       ras.contact_name AS recipient_name, ras.city_name AS recipient_city
+       COALESCE(rac.contact_name, ras.contact_name) AS recipient_name,
+       COALESCE(rac.city_name, ras.city_name) AS recipient_city
 FROM shipments s
 JOIN customers c ON c.id = s.customer_id
 JOIN courier_services sv ON sv.id = s.courier_service_id
 LEFT JOIN operating_units ob ON ob.id = s.origin_branch_id
 LEFT JOIN operating_units db ON db.id = s.destination_branch_id
 LEFT JOIN shipment_address_snapshots ras ON ras.shipment_id = s.id AND ras.role = 'RECIPIENT'
+LEFT JOIN LATERAL (
+    SELECT contact_name, city_name
+    FROM shipment_address_corrections
+    WHERE shipment_id = s.id AND role = 'RECIPIENT'
+    ORDER BY sequence DESC LIMIT 1
+) rac ON true
 WHERE s.organization_id = $1
   AND ($2::text[] IS NULL OR s.current_status = ANY($2::text[]))
   AND ($3::bigint IS NULL OR s.customer_id = $3)
@@ -1566,8 +1622,8 @@ type ListShipmentsRow struct {
 	ServiceName           string
 	OriginBranchCode      *string
 	DestinationBranchCode *string
-	RecipientName         *string
-	RecipientCity         *string
+	RecipientName         string
+	RecipientCity         string
 }
 
 // ListShipments is the operations console's primary query.

@@ -50,14 +50,13 @@ permissions before the frontend form is added.
 
 ### Shipment modification window
 
-The shipment API supports create, read, label and cancel. It does not expose a
-shipment amendment or replacement endpoint, a correction deadline, mutable
-field policy, repricing semantics, AWB/label invalidation, or concurrency
-version for this workflow. A client-side 20-30 minute timer would not make an
-otherwise immutable shipment editable and would be unsafe across devices.
-
-Backend action: contract an auditable correction workflow with a server-issued
-`modifiableUntil`, allowed fields/statuses, optimistic concurrency,
-serviceability/repricing, package barcode and label handling, and events. If
-the intended policy is cancel-and-rebook rather than in-place amendment, make
-the replacement relationship and idempotency behavior explicit.
+Implemented in migration 0040 and `PATCH /api/v1/shipments/{shipmentId}`. A
+shipment may be corrected while it remains `BOOKED`; the AWB, route, price,
+service, package measurements, payment, declared value and customs facts stay
+unchanged. Operators with `shipment.edit` may correct the customer reference,
+contents, instructions, fragile flag, and non-routing sender/recipient contact
+and street-address fields. A mandatory reason, optimistic concurrency version,
+shipment event and audit record protect the workflow. Original booking address
+snapshots remain immutable, while reprinted labels use the latest append-only
+correction. Once pickup activity begins, route- or price-affecting mistakes
+still require the existing controlled cancellation and rebooking workflow.

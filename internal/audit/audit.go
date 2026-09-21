@@ -99,6 +99,7 @@ const (
 	ActionAddressUpdated     = "customer.address_updated"
 
 	ActionShipmentBooked    = "shipment.booked"
+	ActionShipmentCorrected = "shipment.corrected"
 	ActionShipmentCancelled = "shipment.cancelled"
 	ActionLabelGenerated    = "shipment.label_generated"
 
