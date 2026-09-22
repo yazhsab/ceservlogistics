@@ -10480,6 +10480,8 @@ export interface components {
       codAmountMinor?: components["schemas"]["MinorAmount"];
       codAmountLabel?: string;
       declaredValueMinor?: components["schemas"]["MinorAmount"];
+      /** @description Final server-calculated shipment charge for receipts and customer copies. */
+      totalAmountMinor?: components["schemas"]["MinorAmount"];
       currency?: string;
       contentDescription?: string;
       specialInstructions?: string;

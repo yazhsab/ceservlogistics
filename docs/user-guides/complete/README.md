@@ -1,4 +1,4 @@
-# CESERVE complete product documentation
+# CESERV complete product documentation
 
 Edition: 18 September 2026. This pack supersedes the earlier booking-focused guides in the parent directory. It documents the implemented product across staff operations, configuration, finance, management, portals and integrations.
 

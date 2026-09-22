@@ -360,7 +360,7 @@ const tripFixture = {
   status: "PLANNED",
   origin: facility,
   destination: destinationFacility,
-  carrier: { id: "car_01", code: "CSV", name: "Ceserve Fleet" },
+  carrier: { id: "car_01", code: "CSV", name: "Ceserv Fleet" },
   vehicle: {
     id: "veh_01",
     registrationNumber: "LAG-482-XY",
@@ -905,7 +905,7 @@ export async function installMockApi(
     organization: {
       id: "org_01",
       code: "CSV",
-      name: "Ceserve Logistics",
+      name: "Ceserv Logistics",
       timezone: "Africa/Lagos",
       currency: "NGN",
       awbPrefix: "CSV",
@@ -2240,7 +2240,10 @@ export async function installMockApi(
     if (path === `/api/v1/shipments/${shipment.id}` && method === "GET")
       return json(route, shipment);
     if (path === `/api/v1/shipments/${shipment.id}` && method === "PATCH") {
-      lastShipmentCorrection = request.postDataJSON() as Record<string, unknown>;
+      lastShipmentCorrection = request.postDataJSON() as Record<
+        string,
+        unknown
+      >;
       const sender = lastShipmentCorrection.sender as Record<string, unknown>;
       const recipient = lastShipmentCorrection.recipient as Record<
         string,
@@ -2292,7 +2295,7 @@ export async function installMockApi(
         serviceCode: "EXPRESS",
         serviceName: "Express Air",
         serviceMode: "AIR",
-        routingCode: "ABVH-ABV01",
+        routingCode: "HUB_PORT_HARCOURT/BR_RI/500103",
         originBranchCode: "LOS01",
         originHubCode: "LOSH",
         destinationHubCode: "ABVH",
@@ -2306,8 +2309,16 @@ export async function installMockApi(
           pincode: "900001",
         },
         pieceCount: 1,
+        actualWeightGrams: 1000,
+        chargeableWeightGrams: 1000,
         weightLabel: "1 kg",
         paymentMode: "PREPAID",
+        declaredValueMinor: 10000000,
+        totalAmountMinor: 1250000,
+        currency: "NGN",
+        contentDescription: "Documents",
+        bookedAt: shipment.bookedAt,
+        sender: shipment.addresses.sender,
       });
     if (path === "/api/v1/network/operating-units" && method === "POST")
       return json(

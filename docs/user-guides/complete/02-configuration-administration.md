@@ -1,4 +1,4 @@
-# CESERVE Configuration and Administration
+# CESERV Configuration and Administration
 
 For administrators network managers commercial managers and integration owners
 

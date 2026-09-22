@@ -1,4 +1,4 @@
-# CESERVE Administrator Configuration Guide
+# CESERV Administrator Configuration Guide
 
 For organization administrators and authorized commercial managers
 

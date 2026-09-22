@@ -1,4 +1,4 @@
-# CESERVE Daily Operations Guide
+# CESERV Daily Operations Guide
 
 For counter teams, pickup and delivery staff, dispatchers, hubs and finance
 

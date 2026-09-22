@@ -108,7 +108,7 @@ function AudienceShell({
             </span>
             <span className="min-w-0">
               <strong className="block truncate text-sm">
-                Ceserve Logistics
+                Ceserv Logistics
               </strong>
               <span
                 className={cn(

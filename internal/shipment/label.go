@@ -53,6 +53,7 @@ type Label struct {
 	CODAmountMinor     int64  `json:"codAmountMinor"`
 	CODAmountLabel     string `json:"codAmountLabel,omitempty"`
 	DeclaredValueMinor int64  `json:"declaredValueMinor"`
+	TotalAmountMinor   int64  `json:"totalAmountMinor"`
 	Currency           string `json:"currency"`
 
 	ContentDescription  string `json:"contentDescription"`
@@ -100,7 +101,7 @@ func buildLabel(d dbgen.GetShipmentLabelDataRow, packages []dbgen.ShipmentPackag
 		ChargeableWeightGrams: d.ChargeableWeightGrams,
 		WeightLabel:           formatWeight(d.ChargeableWeightGrams),
 		PaymentMode:           d.PaymentMode, CODAmountMinor: d.CodAmountMinor,
-		DeclaredValueMinor: d.DeclaredValueMinor, Currency: d.Currency,
+		DeclaredValueMinor: d.DeclaredValueMinor, TotalAmountMinor: d.TotalAmountMinor, Currency: d.Currency,
 		ContentDescription: d.ContentDescription, IsFragile: d.IsFragile,
 		BookedAt: d.BookedAt, PromisedDeliveryAt: d.PromisedDeliveryAt,
 		GeneratedAt: time.Now(),

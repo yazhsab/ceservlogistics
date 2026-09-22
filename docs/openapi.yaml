@@ -10758,6 +10758,10 @@ components:
         codAmountMinor: { $ref: "#/components/schemas/MinorAmount" }
         codAmountLabel: { type: string }
         declaredValueMinor: { $ref: "#/components/schemas/MinorAmount" }
+        totalAmountMinor:
+          allOf:
+            - { $ref: "#/components/schemas/MinorAmount" }
+          description: Final server-calculated shipment charge for receipts and customer copies.
         currency: { type: string }
         contentDescription: { type: string }
         specialInstructions: { type: string }

@@ -1,8 +1,8 @@
-# CESERVE Complete Product Walkthrough
+# CESERV Complete Product Walkthrough
 
 For new users supervisors customers and franchise teams
 
-CESERVE manages the courier business from customer setup and booking through physical movement, delivery, returns and financial records. It also provides network and pricing configuration, customer and franchise portals, management reports, notifications and partner integrations. This manual introduces the whole product and walks through the customer-facing work.
+CESERV manages the courier business from customer setup and booking through physical movement, delivery, returns and financial records. It also provides network and pricing configuration, customer and franchise portals, management reports, notifications and partner integrations. This manual introduces the whole product and walks through the customer-facing work.
 
 **Edition:** 18 September 2026. Read this with the Configuration and Administration, Operations Finance and Reporting, and Questions and Support manuals. Together they replace the earlier limited guide pack. Available actions depend on your role, operating scope, configuration and record status.
 
@@ -239,7 +239,11 @@ The current customer portal does not provide self-service booking or address mai
 
 ### Print the correct label
 
-Use **Label** on the shipment detail where permitted. Select the supported **4 × 6** sticker or two-up **A4** format, or download ZPL for a compatible label printer. Check one printed label for legibility and scan it in an appropriate verification process before a batch.
+Use **Label** on the shipment detail where permitted. Select **4 × 6 sticker labels** for the parcels, **A4 courier sheet + customer copy** for a printable customer record, or download ZPL for a compatible label printer. The customer copy includes the AWB, sender and recipient, package details, declared value and the final server-calculated shipment charge. It is a shipment record, not a tax invoice. Check one printed label for legibility and scan it in an appropriate verification process before a batch.
+
+![Shipment label with a long routing code contained inside its routing box](../screenshots/shipment-label-routing-code.png)
+
+![A4 customer copy with AWB and server-calculated shipment charge](../screenshots/shipment-customer-copy.png)
 
 Print one scannable label for each package. Match the AWB and package reference to the physical parcel before attaching it. Reprinting a label does not create a new booking. If a label cannot be loaded, keep the AWB and error, check the printer or browser print settings, and contact support rather than inventing a barcode.
 
@@ -249,7 +253,7 @@ Only an authorized user may cancel when the action is offered and the shipment i
 
 If movement has already made cancellation invalid, follow the authorized operations or return process. Do not assume cancelling the booking reverses every collection, posted financial document or physical handover. Finance and operations must review those records separately.
 
-**If information is wrong:** saved booking snapshots are not general-purpose editable forms. Record the incorrect value and requested correction and ask the responsible team to use the supported cancellation, rebooking or exception process.
+**If information is wrong:** while a shipment is still **Booked**, an authorized user can use **Edit** to correct the permitted reference, contact, address and declaration fields without changing the AWB. A correction reason is required and the audit trail preserves the original booking. Route, service, package, payment and financial changes still require the supported cancellation, rebooking or exception process.
 
 <!-- page -->
 ## Use the customer portal

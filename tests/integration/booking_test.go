@@ -533,6 +533,9 @@ func TestLabelPayloadIsScannable(t *testing.T) {
 	if label.Body["barcodePayload"] != awb {
 		t.Errorf("barcode payload must be the AWB, got %v", label.Body["barcodePayload"])
 	}
+	if label.Body["totalAmountMinor"] != booking.Body["totalAmountMinor"] {
+		t.Errorf("customer copy total must match the booked total: label=%v booking=%v", label.Body["totalAmountMinor"], booking.Body["totalAmountMinor"])
+	}
 	qr, _ := label.Body["qrPayload"].(string)
 	if qr == "" || qr[:5] != "CSV1|" {
 		t.Errorf("QR payload must be version-prefixed, got %q", qr)

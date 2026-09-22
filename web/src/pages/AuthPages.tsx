@@ -54,7 +54,7 @@ function AuthFrame({
             </span>
             <span>
               <strong className="block text-sm tracking-[0.08em] text-slate-950">
-                CESERVE
+                CESERV
               </strong>
               <span className="block text-[10px] uppercase tracking-[0.18em] text-slate-500">
                 Courier Operating System

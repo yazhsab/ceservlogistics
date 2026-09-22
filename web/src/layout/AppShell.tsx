@@ -485,7 +485,7 @@ export function AppShell() {
           <Link
             to={signedInHome(user)}
             className="flex min-w-0 flex-1 items-center gap-3"
-            aria-label="Ceserve home"
+            aria-label="Ceserv home"
           >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#d8f25a] text-sm font-black text-[#123f36]">
               CS
@@ -493,7 +493,7 @@ export function AppShell() {
             {!collapsed ? (
               <span className="min-w-0">
                 <strong className="block truncate text-sm tracking-wide">
-                  CESERVE
+                  CESERV
                 </strong>
                 <span className="block truncate text-[10px] uppercase tracking-[0.2em] text-emerald-100/70">
                   Courier OS

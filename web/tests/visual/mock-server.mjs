@@ -132,7 +132,7 @@ const user = {
   organization: {
     id: "org_visual",
     code: "CSV",
-    name: "Ceserve Logistics",
+    name: "Ceserv Logistics",
     timezone: "Africa/Lagos",
     currency: "NGN",
     awbPrefix: "CSV",
@@ -1309,7 +1309,7 @@ createServer((request, response) => {
       qrPayload: `CSV1|${shipment.awb}|EXPRESS|ABV01|900001|1|1000|PREPAID|0`,
       serviceCode: "EXPRESS",
       serviceMode: "AIR",
-      routingCode: "ABVH-ABV01",
+      routingCode: "HUB_PORT_HARCOURT/BR_RI/500103",
       originBranchCode: "LOS01",
       destinationBranchCode: "ABV01",
       recipient: {
@@ -1321,8 +1321,16 @@ createServer((request, response) => {
         pincode: "900001",
       },
       pieceCount: 1,
+      actualWeightGrams: 1000,
+      chargeableWeightGrams: 1000,
       weightLabel: "1 kg",
       paymentMode: "PREPAID",
+      declaredValueMinor: 10000000,
+      totalAmountMinor: 1250000,
+      currency: "NGN",
+      contentDescription: "Documents",
+      bookedAt: shipment.bookedAt,
+      sender: shipment.addresses.sender,
     };
   else if (path === "/api/v1/courier-services")
     body = {

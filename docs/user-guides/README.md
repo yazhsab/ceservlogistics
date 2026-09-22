@@ -1,4 +1,4 @@
-# CESERVE end user guides
+# CESERV end user guides
 
 **Superseded by the [complete product documentation](complete/README.md).** Use that 52-page pack for product-wide walkthroughs, configuration, operations, finance, reporting, portals, notifications and integrations. The four shorter guides below are retained as the earlier edition.
 

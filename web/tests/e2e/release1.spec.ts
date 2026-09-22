@@ -160,7 +160,47 @@ test("shipment search, detail, label, and cancellation", async ({ page }) => {
   await page.getByRole("link", { name: shipment.awb }).click();
   await expect(page.getByRole("heading", { name: shipment.awb })).toBeVisible();
   await page.getByRole("button", { name: "Label" }).click();
-  await expect(page.getByText("Routing code")).toBeVisible();
+  const labelDialog = page.getByRole("dialog", { name: "Shipment label" });
+  await expect(labelDialog.getByText("Routing code")).toBeVisible();
+  await expect(labelDialog.getByText("CESERV", { exact: true })).toBeVisible();
+  const routingCode = labelDialog.getByTestId("routing-code");
+  await expect(routingCode).toHaveText("HUB_PORT_HARCOURT/BR_RI/500103");
+  expect(
+    await routingCode.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await labelDialog.getByLabel("Print format").selectOption("COURIER_SHEET");
+  const customerCopy = labelDialog.getByRole("region", {
+    name: "Customer copy",
+  });
+  await expect(customerCopy).toBeVisible();
+  await expect(
+    customerCopy.getByText("Customer copy", { exact: true }),
+  ).toBeVisible();
+  await expect(customerCopy.getByText("₦12,500.00")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Print labels & customer copy" }),
+  ).toBeVisible();
+  await page.emulateMedia({ media: "print" });
+  const printPanels = labelDialog.locator(".courier-sheet-panel");
+  await expect(printPanels).toHaveCount(2);
+  const printPanelMetrics = await printPanels.evaluateAll((panels) =>
+    panels.map((panel) => ({
+      clientWidth: panel.clientWidth,
+      scrollWidth: panel.scrollWidth,
+      clientHeight: panel.clientHeight,
+      scrollHeight: panel.scrollHeight,
+    })),
+  );
+  expect(
+    printPanelMetrics.every(
+      (panel) =>
+        panel.scrollWidth <= panel.clientWidth + 1 &&
+        panel.scrollHeight <= panel.clientHeight + 1,
+    ),
+  ).toBe(true);
+  await page.emulateMedia({ media: "screen" });
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Cancel" }).click();
   await page

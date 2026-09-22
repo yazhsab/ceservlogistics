@@ -1615,7 +1615,7 @@ function LabelDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Shipment label"
-      description="Print one scannable label per package as a 4 × 6 sticker or a two-up A4 courier sheet."
+      description="Print one scannable label per package as a 4 × 6 sticker or an A4 courier sheet with a customer copy."
       footer={
         <>
           <Select
@@ -1627,7 +1627,9 @@ function LabelDialog({
             }
           >
             <option value="STICKER">4 × 6 sticker labels</option>
-            <option value="COURIER_SHEET">A4 courier sheet</option>
+            <option value="COURIER_SHEET">
+              A4 courier sheet + customer copy
+            </option>
           </Select>
           <Button onClick={() => void downloadZpl()} disabled={!query.data}>
             <Download aria-hidden className="h-4 w-4" /> Download ZPL
@@ -1637,7 +1639,10 @@ function LabelDialog({
             onClick={() => window.print()}
             disabled={!query.data}
           >
-            <Printer aria-hidden className="h-4 w-4" /> Print all pieces
+            <Printer aria-hidden className="h-4 w-4" />
+            {printFormat === "COURIER_SHEET"
+              ? "Print labels & customer copy"
+              : "Print all pieces"}
           </Button>
         </>
       }
@@ -1675,8 +1680,19 @@ function ShippingLabel({
           total={pieces.length}
         />
       ))}
+      {printFormat === "COURIER_SHEET" ? (
+        <CustomerShipmentCopy label={label} />
+      ) : null}
     </div>
   );
+}
+
+function routingCodeTextSize(routingCode?: string) {
+  const length = routingCode?.length ?? 0;
+  if (length > 32) return "text-base tracking-normal";
+  if (length > 24) return "text-lg tracking-tight";
+  if (length > 18) return "text-xl tracking-tight";
+  return "text-3xl tracking-wide";
 }
 
 function PieceShippingLabel({
@@ -1691,10 +1707,10 @@ function PieceShippingLabel({
   const pieceBarcode = piece.barcode ?? label.awb ?? "";
   const pieceQrPayload = `${label.qrPayload ?? "CSV1|"}|${piece.sequence}|${pieceBarcode}`;
   return (
-    <div className="shipping-label-page mx-auto aspect-[2/3] w-full max-w-[420px] border-2 border-slate-950 bg-white p-4 text-slate-950">
-      <div className="flex items-start justify-between border-b-2 border-slate-950 pb-3">
+    <div className="shipping-label-page courier-sheet-panel mx-auto aspect-[2/3] w-full max-w-[420px] border-2 border-slate-950 bg-white p-4 text-slate-950">
+      <div className="label-header flex items-start justify-between border-b-2 border-slate-950 pb-3">
         <div>
-          <strong className="text-xl tracking-wide">CESERVE</strong>
+          <strong className="text-xl tracking-wide">CESERV</strong>
           <p className="text-[10px] uppercase tracking-widest">Courier</p>
         </div>
         <div className="text-right">
@@ -1702,13 +1718,16 @@ function PieceShippingLabel({
           <span className="text-xs">{label.serviceMode}</span>
         </div>
       </div>
-      <div className="border-b-2 border-slate-950 py-2 text-center">
+      <div className="label-routing min-w-0 overflow-hidden border-b-2 border-slate-950 px-1 py-2 text-center">
         <p className="text-[10px] font-bold uppercase">Routing code</p>
-        <p className="mt-1 text-3xl font-black tracking-wide">
+        <p
+          data-testid="routing-code"
+          className={`mt-1 max-w-full break-words font-black leading-tight [overflow-wrap:anywhere] ${routingCodeTextSize(label.routingCode)}`}
+        >
           {label.routingCode}
         </p>
       </div>
-      <div className="grid grid-cols-[1fr_88px] gap-3 border-b py-3">
+      <div className="label-address grid grid-cols-[1fr_88px] gap-3 border-b py-3">
         <div>
           <p className="text-[10px] font-bold uppercase">Deliver to</p>
           <p className="mt-1 text-sm font-bold">{label.recipient?.name}</p>
@@ -1726,7 +1745,7 @@ function PieceShippingLabel({
           <QRCodeSVG value={pieceQrPayload} size={84} level="M" />
         ) : null}
       </div>
-      <div className="grid grid-cols-2 gap-3 border-b py-2 text-[10px]">
+      <div className="label-shipment grid grid-cols-2 gap-3 border-b py-2 text-[10px]">
         <div>
           <strong className="block uppercase">From</strong>
           <span>{label.sender?.name}</span>
@@ -1750,7 +1769,7 @@ function PieceShippingLabel({
           ) : null}
         </div>
       </div>
-      <div className="py-2 text-center">
+      <div className="label-barcode py-2 text-center">
         {label.barcodePayload ? (
           <Barcode
             value={pieceBarcode}
@@ -1788,6 +1807,146 @@ function PieceShippingLabel({
         </span>
         <span>{label.isFragile ? "FRAGILE" : ""}</span>
       </div>
+    </div>
+  );
+}
+
+function CustomerShipmentCopy({ label }: { label: Label }) {
+  return (
+    <section
+      aria-label="Customer copy"
+      className="customer-copy-page courier-sheet-panel mx-auto w-full max-w-[760px] border-2 border-slate-950 bg-white p-5 text-slate-950"
+    >
+      <div className="flex items-start justify-between border-b-2 border-slate-950 pb-3">
+        <div>
+          <strong className="text-xl tracking-wide">CESERV</strong>
+          <p className="text-[10px] uppercase tracking-widest">Courier</p>
+        </div>
+        <div className="text-right">
+          <strong className="block text-lg uppercase">Customer copy</strong>
+          <span className="text-xs">Keep for your records</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-b py-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase">Air waybill (AWB)</p>
+          <p className="break-all text-2xl font-black tracking-wide">
+            {label.awb}
+          </p>
+          <p className="mt-1 text-xs">
+            {label.serviceName || label.serviceCode} · {label.serviceMode}
+          </p>
+        </div>
+        {label.qrPayload ? (
+          <QRCodeSVG value={label.qrPayload} size={72} level="M" />
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-2 gap-5 border-b py-3 text-xs leading-5">
+        <AddressCopy title="Sender" party={label.sender} />
+        <AddressCopy title="Recipient" party={label.recipient} />
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 border-b py-3 text-xs sm:grid-cols-4">
+        <ReceiptValue
+          label="Packages"
+          value={String(label.pieceCount ?? label.pieces?.length ?? 1)}
+        />
+        <ReceiptValue
+          label="Weight"
+          value={label.weightLabel || formatWeight(label.chargeableWeightGrams)}
+        />
+        <ReceiptValue label="Payment" value={label.paymentMode || "—"} />
+        <ReceiptValue label="Booked" value={formatDateTime(label.bookedAt)} />
+        <ReceiptValue
+          label="Declared value"
+          value={formatMoney(label.declaredValueMinor, label.currency)}
+        />
+        <ReceiptValue
+          label="Shipment charge"
+          value={formatMoney(label.totalAmountMinor, label.currency)}
+          emphasis
+        />
+        {label.codAmountMinor ? (
+          <ReceiptValue
+            label="COD amount"
+            value={formatMoney(label.codAmountMinor, label.currency)}
+          />
+        ) : null}
+        <ReceiptValue
+          label="Contents"
+          value={label.contentDescription || "—"}
+        />
+      </dl>
+
+      <div className="grid grid-cols-[1fr_210px] items-end gap-4 pt-3">
+        <div className="text-[10px] leading-4">
+          {label.referenceNumber ? (
+            <p>Reference: {label.referenceNumber}</p>
+          ) : null}
+          <p>Track this shipment using the AWB above.</p>
+          <p>This customer copy is not a tax invoice.</p>
+        </div>
+        {label.barcodePayload ? (
+          <Barcode
+            value={label.barcodePayload}
+            format="CODE128"
+            height={38}
+            width={1.15}
+            margin={0}
+            fontSize={10}
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function AddressCopy({
+  title,
+  party,
+}: {
+  title: string;
+  party?: Label["sender"];
+}) {
+  return (
+    <div className="min-w-0">
+      <strong className="block text-[10px] uppercase">{title}</strong>
+      <span className="font-semibold">{party?.name || "—"}</span>
+      <br />
+      <span>{party?.line1 || "—"}</span>
+      {party?.line2 ? (
+        <>
+          <br />
+          <span>{party.line2}</span>
+        </>
+      ) : null}
+      <br />
+      <span>
+        {[party?.city, party?.state, party?.pincode].filter(Boolean).join(", ")}
+      </span>
+      <br />
+      <span>{party?.phone}</span>
+    </div>
+  );
+}
+
+function ReceiptValue({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-[9px] uppercase text-slate-600">{label}</dt>
+      <dd className={emphasis ? "text-sm font-black" : "font-semibold"}>
+        {value}
+      </dd>
     </div>
   );
 }

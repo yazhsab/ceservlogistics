@@ -1,4 +1,4 @@
-# CESERVE Getting Started and Booking Guide
+# CESERV Getting Started and Booking Guide
 
 For counter staff, customer service teams and new operators
 
@@ -133,7 +133,7 @@ This guide takes you from signing in to creating a customer and booking a shipme
 3. Check declared value, COD amount, both billing parties, customs values and insurance where applicable. Obtain acceptance of the current insurance premium if insurance is requested.
 4. If you edit any input, use **Refresh shipment preview** or **Refresh preview**. Review the updated result and insurance acceptance again.
 5. Select **Confirm & book** once and wait for the result. The success screen provides the **AWB**, the shipment reference used for labels and tracking.
-6. Use the label action when available, check the printed AWB against the shipment, and attach the label to the correct parcel. Use **View Shipment** to inspect the saved record or start a new booking.
+6. Use **Label** when available. Choose **4 × 6 sticker labels** for parcel labels, or **A4 courier sheet + customer copy** when the customer needs a receipt copy. Check the printed AWB against the shipment and attach only the parcel label to the correct package. The customer copy shows the server-confirmed shipment charge and is marked as not being a tax invoice. Use **View Shipment** to inspect the saved record or start a new booking.
 
 **Keyboard shortcut:** Ctrl+Enter on Windows, or Command+Enter on Mac, requests a preview and can submit a booking when a current preview is already present. Use it only after the same final checks as the booking button.
 

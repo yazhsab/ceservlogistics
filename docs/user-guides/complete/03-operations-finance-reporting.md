@@ -1,4 +1,4 @@
-# CESERVE Operations Finance and Reporting
+# CESERV Operations Finance and Reporting
 
 For pickup warehouse dispatch delivery support finance and management teams
 

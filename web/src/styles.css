@@ -82,12 +82,12 @@ button:disabled {
   body {
     background: white;
   }
-  .shipping-label-page {
+  .courier-sheet-panel {
     break-after: page;
     page-break-after: always;
     box-shadow: none !important;
   }
-  .shipping-label-page:last-child {
+  .courier-sheet-panel:last-child {
     break-after: auto;
     page-break-after: auto;
   }
@@ -102,14 +102,31 @@ button:disabled {
     grid-template-columns: 1fr;
     gap: 8mm !important;
   }
-  .label-format-courier_sheet .shipping-label-page {
+  .label-format-courier_sheet .courier-sheet-panel {
     width: 190mm !important;
     height: 135mm !important;
     max-width: none !important;
+    overflow: hidden !important;
     break-after: auto;
     page-break-after: auto;
   }
-  .label-format-courier_sheet .shipping-label-page:nth-child(2n) {
+  .label-format-courier_sheet .shipping-label-page {
+    padding: 2mm !important;
+  }
+  .label-format-courier_sheet .shipping-label-page .label-header {
+    padding-bottom: 1.5mm !important;
+  }
+  .label-format-courier_sheet .shipping-label-page .label-routing,
+  .label-format-courier_sheet .shipping-label-page .label-shipment,
+  .label-format-courier_sheet .shipping-label-page .label-barcode {
+    padding-bottom: 1mm !important;
+    padding-top: 1mm !important;
+  }
+  .label-format-courier_sheet .shipping-label-page .label-address {
+    padding-bottom: 1.5mm !important;
+    padding-top: 1.5mm !important;
+  }
+  .label-format-courier_sheet .courier-sheet-panel:nth-child(2n) {
     break-after: page;
     page-break-after: always;
   }
