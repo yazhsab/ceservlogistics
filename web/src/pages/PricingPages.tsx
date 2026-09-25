@@ -16,6 +16,7 @@ import { z } from "zod";
 import {
   apiRequest,
   queryString,
+  type CustomerSummary,
   type OffsetPageOf,
   type Quote,
   type QuoteRequest,
@@ -57,6 +58,9 @@ import {
 } from "../lib/utils";
 
 type RecordPage = OffsetPageOf<Record<string, unknown>>;
+type WeightPriceRecord = Record<string, unknown> & {
+  priceSource: "DOMESTIC" | "RATE_CARD";
+};
 const simulatorSchema = z.object({
   originPincode: z.string().regex(/^[1-9][0-9]{5}$/),
   destinationPincode: z.string().regex(/^[1-9][0-9]{5}$/),
@@ -558,22 +562,34 @@ function CreateRateCardDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const schema = z.object({
-    code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
-    name: z.string().min(2),
-    description: z.string().optional(),
-    scope: z.enum(["RETAIL", "BUSINESS", "FRANCHISE"]),
-    customerId: z.string().optional(),
-    franchiseId: z.string().optional(),
-    isDefault: z.boolean(),
-  });
+  const schema = z
+    .object({
+      code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
+      name: z.string().min(2),
+      description: z.string().optional(),
+      scope: z.enum(["RETAIL", "BUSINESS", "FRANCHISE"]),
+      customerId: z.string().optional(),
+      franchiseId: z.string().optional(),
+      isDefault: z.boolean(),
+    })
+    .superRefine((value, context) => {
+      if (value.scope === "BUSINESS" && !value.customerId)
+        context.addIssue({
+          code: "custom",
+          path: ["customerId"],
+          message: "Choose the customer receiving this rate card.",
+        });
+    });
   type Values = z.infer<typeof schema>;
   const client = useQueryClient();
   const { toast } = useToast();
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerSummary>();
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     reset,
     formState: { errors },
   } = useForm<Values>({
@@ -581,6 +597,15 @@ function CreateRateCardDialog({
     defaultValues: { scope: "RETAIL", isDefault: false },
   });
   const scope = watch("scope");
+  const customers = useQuery({
+    queryKey: ["customers", "rate-card-lookup", customerSearch],
+    queryFn: () =>
+      apiRequest<OffsetPageOf<CustomerSummary>>(
+        `/api/v1/customers${queryString({ search: customerSearch, status: "ACTIVE", limit: 8 })}`,
+      ),
+    enabled: scope === "BUSINESS" && customerSearch.trim().length >= 2,
+    staleTime: 30_000,
+  });
   const mutation = useMutation({
     mutationFn: (values: Values) =>
       apiRequest("/api/v1/rate-cards", {
@@ -599,6 +624,8 @@ function CreateRateCardDialog({
       void client.invalidateQueries({ queryKey: ["rate-cards"] });
       toast({ tone: "success", title: "Rate card created" });
       reset();
+      setCustomerSearch("");
+      setSelectedCustomer(undefined);
       onOpenChange(false);
     },
   });
@@ -651,8 +678,65 @@ function CreateRateCardDialog({
           </Select>
         </Field>
         {scope === "BUSINESS" ? (
-          <Field label="Customer ID" htmlFor="cardCustomer">
-            <Input id="cardCustomer" {...register("customerId")} />
+          <Field
+            label="Customer"
+            htmlFor="cardCustomer"
+            required
+            error={errors.customerId?.message}
+            className="relative"
+          >
+            <Input
+              id="cardCustomer"
+              value={customerSearch}
+              placeholder="Search code, name, email or phone"
+              autoComplete="off"
+              onChange={(event) => {
+                setCustomerSearch(event.target.value);
+                setSelectedCustomer(undefined);
+                setValue("customerId", "", { shouldValidate: true });
+              }}
+            />
+            <input type="hidden" {...register("customerId")} />
+            {selectedCustomer ? (
+              <p className="mt-1 text-xs text-success">
+                Selected: {selectedCustomer.code} · {selectedCustomer.name}
+              </p>
+            ) : customerSearch.trim().length >= 2 ? (
+              <div className="absolute left-0 right-0 top-[68px] z-20 max-h-56 overflow-y-auto rounded-md border bg-white p-1 shadow-overlay">
+                {customers.isLoading ? (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    Searching…
+                  </p>
+                ) : customers.data?.data?.length ? (
+                  customers.data.data.map((customer) => (
+                    <button
+                      key={customer.id}
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => {
+                        setSelectedCustomer(customer);
+                        setCustomerSearch(
+                          `${customer.code} · ${customer.name}`,
+                        );
+                        setValue("customerId", customer.id, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
+                    >
+                      <strong>{customer.name}</strong>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {customer.code}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    No active customer found.
+                  </p>
+                )}
+              </div>
+            ) : null}
           </Field>
         ) : scope === "FRANCHISE" ? (
           <Field label="Franchise ID" htmlFor="cardFranchise">
@@ -897,7 +981,9 @@ export function RateCardVersionPage() {
   const { toast } = useToast();
   const client = useQueryClient();
   const [rateOpen, setRateOpen] = useState(false);
+  const [slabOpen, setSlabOpen] = useState(false);
   const [surchargeOpen, setSurchargeOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
   const query = useQuery({
     queryKey: ["rate-card-version", versionId],
@@ -922,6 +1008,16 @@ export function RateCardVersionPage() {
   if (query.error || !query.data)
     return <ErrorState error={query.error ?? new Error("Version not found")} />;
   const version = query.data;
+  const weightPrices: WeightPriceRecord[] = [
+    ...((version.domesticWeightSlabs ?? []).map((slab) => ({
+      ...(slab as Record<string, unknown>),
+      priceSource: "DOMESTIC",
+    })) as WeightPriceRecord[]),
+    ...((version.weightSlabs ?? []).map((slab) => ({
+      ...(slab as Record<string, unknown>),
+      priceSource: "RATE_CARD",
+    })) as WeightPriceRecord[]),
+  ];
   return (
     <>
       <PageHeader
@@ -939,8 +1035,14 @@ export function RateCardVersionPage() {
             {version.editable && hasPermission("rate_card.manage") ? (
               <>
                 <Button onClick={() => setRateOpen(true)}>Add lane rate</Button>
+                <Button onClick={() => setSlabOpen(true)}>
+                  Add weight price
+                </Button>
                 <Button onClick={() => setSurchargeOpen(true)}>
                   Add surcharge
+                </Button>
+                <Button onClick={() => setDiscountOpen(true)}>
+                  Add discount
                 </Button>
               </>
             ) : null}
@@ -1068,6 +1170,109 @@ export function RateCardVersionPage() {
             />
           )}
         </Panel>
+        <Panel>
+          <PanelHeader
+            title="Weight price list"
+            description="Exact chargeable-weight categories. A matching slab takes priority over the linear lane rate."
+          />
+          {weightPrices.length ? (
+            <DataTable label="Weight price list">
+              <thead>
+                <tr>
+                  <TableHead>Service</TableHead>
+                  <TableHead>Lane</TableHead>
+                  <TableHead>Weight category</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                </tr>
+              </thead>
+              <tbody>
+                {weightPrices.map((slab, index) => (
+                  <tr key={String(slab.id ?? index)}>
+                    <TableCell>{String(slab.serviceCode ?? "—")}</TableCell>
+                    <TableCell>
+                      {slab.priceSource === "DOMESTIC"
+                        ? `${String(slab.originStateName ?? slab.originStateCode ?? "—")} → tariff zone ${String(slab.rateZoneCode ?? "—")}`
+                        : `${String(slab.originZoneCode ?? "—")} → ${String(slab.destinationZoneCode ?? "—")}`}
+                    </TableCell>
+                    <TableCell>
+                      {formatWeight(Number(slab.fromWeightGrams ?? 0))} to{" "}
+                      {typeof slab.toWeightGrams === "number"
+                        ? formatWeight(slab.toWeightGrams - 1)
+                        : "and above"}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">
+                      {formatMoney(
+                        Number(slab.priceMinor ?? 0),
+                        version.currency,
+                      )}
+                      {typeof slab.additionalStepGrams === "number" &&
+                      typeof slab.additionalPriceMinor === "number" ? (
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          +
+                          {formatMoney(
+                            slab.additionalPriceMinor,
+                            version.currency,
+                          )}{" "}
+                          / {formatWeight(slab.additionalStepGrams)}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          ) : (
+            <EmptyState
+              icon={Banknote}
+              title="No exact weight prices"
+              description="This version currently uses its linear lane prices. Add slabs when every weight category has a supplied price."
+            />
+          )}
+        </Panel>
+        <Panel>
+          <PanelHeader
+            title="Discounts"
+            description="Rules on this rate card are applied by the server after freight and surcharges."
+          />
+          {version.discounts?.length ? (
+            <div className="divide-y">
+              {version.discounts.map((rule, index) => (
+                <div
+                  key={String(rule.id ?? index)}
+                  className="flex items-start justify-between gap-3 p-4"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {String(rule.code ?? "Rule")} ·{" "}
+                      {String(rule.name ?? "Discount")}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Applies to{" "}
+                      {titleCase(String(rule.appliesTo ?? "FREIGHT"))}
+                      {rule.serviceCode
+                        ? ` · ${String(rule.serviceCode)}`
+                        : " · All services"}
+                      {rule.isStackable ? " · Stackable" : ""}
+                    </p>
+                  </div>
+                  <Badge tone="success">
+                    {typeof rule.percentageBp === "number"
+                      ? `${rule.percentageBp / 100}%`
+                      : typeof rule.valueMinor === "number"
+                        ? formatMoney(rule.valueMinor, version.currency)
+                        : "Configured"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={CircleHelp}
+              title="No discounts"
+              description="For a customer-specific discount, add the rule to a BUSINESS rate card associated with that customer."
+            />
+          )}
+        </Panel>
       </div>
       <ZoneRateDialog
         versionId={versionId}
@@ -1079,6 +1284,18 @@ export function RateCardVersionPage() {
         versionId={versionId}
         open={surchargeOpen}
         onOpenChange={setSurchargeOpen}
+        onSaved={() => void query.refetch()}
+      />
+      <WeightSlabDialog
+        versionId={versionId}
+        open={slabOpen}
+        onOpenChange={setSlabOpen}
+        onSaved={() => void query.refetch()}
+      />
+      <DiscountDialog
+        versionId={versionId}
+        open={discountOpen}
+        onOpenChange={setDiscountOpen}
         onSaved={() => void query.refetch()}
       />
       <ConfirmAction
@@ -1274,6 +1491,415 @@ function ZoneRateDialog({
             })}
           />
         </Field>
+        {mutation.error ? (
+          <p role="alert" className="sm:col-span-2 text-sm text-danger">
+            {mutation.error.message}
+          </p>
+        ) : null}
+      </form>
+    </Dialog>
+  );
+}
+
+const weightSlabSchema = z
+  .object({
+    serviceCode: z.string().min(2),
+    originZoneCode: z.string().min(2),
+    destinationZoneCode: z.string().min(2),
+    fromWeightKg: z.number().min(0).multipleOf(0.001),
+    toWeightKg: z.number().min(0.001).multipleOf(0.001).optional(),
+    price: z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a valid price."),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.toWeightKg !== undefined &&
+      value.toWeightKg <= value.fromWeightKg
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["toWeightKg"],
+        message: "The upper weight must be greater than the lower weight.",
+      });
+  });
+type WeightSlabValues = z.infer<typeof weightSlabSchema>;
+
+function WeightSlabDialog({
+  versionId,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  versionId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<WeightSlabValues>({
+    resolver: zodResolver(weightSlabSchema),
+    defaultValues: { fromWeightKg: 0, toWeightKg: 0.5 },
+  });
+  const mutation = useMutation({
+    mutationFn: (values: WeightSlabValues) =>
+      apiRequest(`/api/v1/rate-cards/versions/${versionId}/weight-slabs`, {
+        method: "POST",
+        body: {
+          serviceCode: values.serviceCode.toUpperCase(),
+          originZoneCode: values.originZoneCode.toUpperCase(),
+          destinationZoneCode: values.destinationZoneCode.toUpperCase(),
+          fromWeightGrams: kgToGrams(values.fromWeightKg),
+          toWeightGrams:
+            values.toWeightKg === undefined
+              ? undefined
+              : kgToGrams(values.toWeightKg),
+          priceMinor: toMinorUnits(values.price),
+        },
+      }),
+    onSuccess: () => {
+      onSaved();
+      toast({ tone: "success", title: "Weight price added" });
+      reset();
+      onOpenChange(false);
+    },
+  });
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add weight price"
+      description="Create one non-overlapping category for the selected service and lane. The upper bound is exclusive."
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending}
+            onClick={() =>
+              void handleSubmit((values) => mutation.mutate(values))()
+            }
+          >
+            Add weight price
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="grid gap-4 sm:grid-cols-2"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <Field
+          label="Service code"
+          htmlFor="slabService"
+          required
+          error={errors.serviceCode?.message}
+        >
+          <Input
+            id="slabService"
+            className="uppercase"
+            {...register("serviceCode")}
+          />
+        </Field>
+        <div />
+        <Field
+          label="Origin zone"
+          htmlFor="slabOrigin"
+          required
+          error={errors.originZoneCode?.message}
+        >
+          <Input
+            id="slabOrigin"
+            className="uppercase"
+            {...register("originZoneCode")}
+          />
+        </Field>
+        <Field
+          label="Destination zone"
+          htmlFor="slabDestination"
+          required
+          error={errors.destinationZoneCode?.message}
+        >
+          <Input
+            id="slabDestination"
+            className="uppercase"
+            {...register("destinationZoneCode")}
+          />
+        </Field>
+        <Field
+          label="From weight (kg)"
+          htmlFor="slabFrom"
+          required
+          error={errors.fromWeightKg?.message}
+        >
+          <Input
+            id="slabFrom"
+            type="number"
+            min={0}
+            step={0.001}
+            {...register("fromWeightKg", { valueAsNumber: true })}
+          />
+        </Field>
+        <Field
+          label="Up to weight (kg)"
+          htmlFor="slabTo"
+          hint="Leave blank only for the final open-ended category."
+          error={errors.toWeightKg?.message}
+        >
+          <Input
+            id="slabTo"
+            type="number"
+            min={0.001}
+            step={0.001}
+            {...register("toWeightKg", {
+              setValueAs: (value) => (value === "" ? undefined : Number(value)),
+            })}
+          />
+        </Field>
+        <Field
+          label="Price (₦)"
+          htmlFor="slabPrice"
+          required
+          error={errors.price?.message}
+        >
+          <Input id="slabPrice" inputMode="decimal" {...register("price")} />
+        </Field>
+        {mutation.error ? (
+          <p role="alert" className="sm:col-span-2 text-sm text-danger">
+            {mutation.error.message}
+          </p>
+        ) : null}
+      </form>
+    </Dialog>
+  );
+}
+
+const discountSchema = z
+  .object({
+    code: z.string().regex(/^[A-Z0-9][A-Z0-9_-]{1,31}$/),
+    name: z.string().min(2),
+    discountType: z.enum(["PERCENTAGE", "FIXED"]),
+    percentage: z.string().optional(),
+    amount: z.string().optional(),
+    appliesTo: z.enum(["FREIGHT", "FREIGHT_PLUS_SURCHARGES"]),
+    serviceCode: z.string().optional(),
+    minimumSubtotal: z.string().optional(),
+    maximumDiscount: z.string().optional(),
+    priority: z.number().int().min(0).max(1000),
+    isStackable: z.boolean(),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.discountType === "PERCENTAGE" &&
+      (!value.percentage ||
+        !/^\d+(\.\d{1,2})?$/.test(value.percentage) ||
+        Number(value.percentage) > 100)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["percentage"],
+        message: "Enter a percentage from 0 to 100.",
+      });
+    if (
+      value.discountType === "FIXED" &&
+      (!value.amount || !/^\d+(\.\d{1,2})?$/.test(value.amount))
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["amount"],
+        message: "Enter a fixed discount amount.",
+      });
+  });
+type DiscountValues = z.infer<typeof discountSchema>;
+
+function DiscountDialog({
+  versionId,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  versionId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<DiscountValues>({
+    resolver: zodResolver(discountSchema),
+    defaultValues: {
+      discountType: "PERCENTAGE",
+      appliesTo: "FREIGHT",
+      priority: 100,
+      isStackable: false,
+    },
+  });
+  const discountType = watch("discountType");
+  const mutation = useMutation({
+    mutationFn: (values: DiscountValues) =>
+      apiRequest(`/api/v1/rate-cards/versions/${versionId}/discounts`, {
+        method: "POST",
+        body: {
+          code: values.code.toUpperCase(),
+          name: values.name,
+          discountType: values.discountType,
+          percentageBp:
+            values.discountType === "PERCENTAGE"
+              ? Math.round(Number(values.percentage) * 100)
+              : undefined,
+          valueMinor:
+            values.discountType === "FIXED"
+              ? toMinorUnits(values.amount)
+              : undefined,
+          appliesTo: values.appliesTo,
+          serviceCode: values.serviceCode?.toUpperCase() || undefined,
+          minSubtotalMinor: toMinorUnits(values.minimumSubtotal) ?? 0,
+          maxDiscountMinor: toMinorUnits(values.maximumDiscount),
+          priority: values.priority,
+          isStackable: values.isStackable,
+        },
+      }),
+    onSuccess: () => {
+      onSaved();
+      toast({ tone: "success", title: "Discount rule added" });
+      reset();
+      onOpenChange(false);
+    },
+  });
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add discount"
+      description="Use a BUSINESS rate card associated with one customer for a customer-specific discount. The server applies this rule to every matching quote."
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={mutation.isPending}
+            onClick={() =>
+              void handleSubmit((values) => mutation.mutate(values))()
+            }
+          >
+            Add discount
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="grid gap-4 sm:grid-cols-2"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <Field
+          label="Code"
+          htmlFor="discountCode"
+          required
+          error={errors.code?.message}
+        >
+          <Input
+            id="discountCode"
+            className="uppercase"
+            {...register("code")}
+          />
+        </Field>
+        <Field
+          label="Name"
+          htmlFor="discountName"
+          required
+          error={errors.name?.message}
+        >
+          <Input id="discountName" {...register("name")} />
+        </Field>
+        <Field label="Discount type" htmlFor="discountType">
+          <Select id="discountType" {...register("discountType")}>
+            <option value="PERCENTAGE">Percentage</option>
+            <option value="FIXED">Fixed amount</option>
+          </Select>
+        </Field>
+        {discountType === "PERCENTAGE" ? (
+          <Field
+            label="Percentage"
+            htmlFor="discountPercentage"
+            required
+            error={errors.percentage?.message}
+          >
+            <Input
+              id="discountPercentage"
+              inputMode="decimal"
+              {...register("percentage")}
+            />
+          </Field>
+        ) : (
+          <Field
+            label="Amount (₦)"
+            htmlFor="discountAmount"
+            required
+            error={errors.amount?.message}
+          >
+            <Input
+              id="discountAmount"
+              inputMode="decimal"
+              {...register("amount")}
+            />
+          </Field>
+        )}
+        <Field label="Apply to" htmlFor="discountAppliesTo">
+          <Select id="discountAppliesTo" {...register("appliesTo")}>
+            <option value="FREIGHT">Freight</option>
+            <option value="FREIGHT_PLUS_SURCHARGES">
+              Freight plus surcharges
+            </option>
+          </Select>
+        </Field>
+        <Field
+          label="Service code"
+          htmlFor="discountService"
+          hint="Leave blank for every service."
+        >
+          <Input
+            id="discountService"
+            className="uppercase"
+            {...register("serviceCode")}
+          />
+        </Field>
+        <Field label="Minimum subtotal (₦)" htmlFor="discountMinimum">
+          <Input
+            id="discountMinimum"
+            inputMode="decimal"
+            {...register("minimumSubtotal")}
+          />
+        </Field>
+        <Field label="Maximum discount (₦)" htmlFor="discountMaximum">
+          <Input
+            id="discountMaximum"
+            inputMode="decimal"
+            {...register("maximumDiscount")}
+          />
+        </Field>
+        <Field label="Priority" htmlFor="discountPriority">
+          <Input
+            id="discountPriority"
+            type="number"
+            {...register("priority", { valueAsNumber: true })}
+          />
+        </Field>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-emerald-800"
+            {...register("isStackable")}
+          />{" "}
+          Stack with other discounts
+        </label>
         {mutation.error ? (
           <p role="alert" className="sm:col-span-2 text-sm text-danger">
             {mutation.error.message}

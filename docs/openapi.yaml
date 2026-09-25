@@ -1311,6 +1311,12 @@ paths:
                         code: { type: string }
                         name: { type: string }
                         gstStateCode: { type: string }
+                        capitalCity:
+                          type: string
+                          description: Canonical state capital used as an address-entry default.
+                        capitalPincode:
+                          type: string
+                          description: Reference postcode for the capital; serviceability still uses the user's actual postcode.
 
   /api/v1/geography/zones:
     get:
@@ -2011,7 +2017,7 @@ paths:
     get:
       tags: [Pricing]
       summary: Get a rate card version
-      description: Includes its zone rates and surcharges, and whether it is still editable.
+      description: Includes its zone rates, weight slabs, surcharges, discounts, and whether it is still editable.
       responses:
         "200":
           description: The version.
@@ -2084,6 +2090,39 @@ paths:
         "201":
           description: Created.
 
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /api/v1/rate-cards/versions/{versionId}/weight-slabs:
+    parameters:
+      - { $ref: "#/components/parameters/VersionId" }
+    post:
+      tags: [Pricing]
+      summary: Add an exact weight price slab
+      description: Requires `rate_card.manage` and a `DRAFT` version. Slabs for the same service and lane cannot overlap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWeightSlabRequest" }
+      responses:
+        "201": { description: Created. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+  /api/v1/rate-cards/versions/{versionId}/discounts:
+    parameters:
+      - { $ref: "#/components/parameters/VersionId" }
+    post:
+      tags: [Pricing]
+      summary: Add a discount rule
+      description: Requires `rate_card.manage` and a `DRAFT` version. Customer-specific discounts belong on a BUSINESS rate card associated with that customer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDiscountRequest" }
+      responses:
+        "201": { description: Created. }
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
   /api/v1/rate-cards/versions/{versionId}/activate:
@@ -10120,7 +10159,50 @@ components:
             surcharges: { type: integer }
             discounts: { type: integer }
         zoneRates: { type: array, items: { type: object, additionalProperties: true } }
+        weightSlabs: { type: array, items: { type: object, additionalProperties: true } }
+        domesticWeightSlabs:
+          type: array
+          description: Versioned domestic tariff categories keyed by origin state and commercial rate zone.
+          items: { type: object, additionalProperties: true }
         surcharges: { type: array, items: { type: object, additionalProperties: true } }
+        discounts: { type: array, items: { type: object, additionalProperties: true } }
+    CreateWeightSlabRequest:
+      type: object
+      required: [serviceCode, originZoneCode, destinationZoneCode, fromWeightGrams, priceMinor]
+      properties:
+        serviceCode: { type: string }
+        originZoneCode: { type: string }
+        destinationZoneCode: { type: string }
+        fromWeightGrams: { type: integer, minimum: 0 }
+        toWeightGrams:
+          type: integer
+          description: Exclusive upper bound. Omit only for the final open-ended slab.
+        priceMinor: { $ref: "#/components/schemas/MinorAmount" }
+        additionalStepGrams: { type: integer, minimum: 1 }
+        additionalPriceMinor: { $ref: "#/components/schemas/MinorAmount" }
+        sequence: { type: integer, minimum: 1 }
+    CreateDiscountRequest:
+      type: object
+      required: [code, name, discountType]
+      properties:
+        code: { $ref: "#/components/schemas/Code" }
+        name: { type: string }
+        discountType: { type: string, enum: [FIXED, PERCENTAGE] }
+        valueMinor:
+          allOf: [{ $ref: "#/components/schemas/MinorAmount" }]
+          description: Required for FIXED.
+        percentageBp:
+          allOf: [{ $ref: "#/components/schemas/BasisPoints" }]
+          description: Required for PERCENTAGE.
+        appliesTo:
+          type: string
+          enum: [FREIGHT, FREIGHT_PLUS_SURCHARGES]
+          default: FREIGHT
+        serviceCode: { type: string }
+        minSubtotalMinor: { $ref: "#/components/schemas/MinorAmount" }
+        maxDiscountMinor: { $ref: "#/components/schemas/MinorAmount" }
+        priority: { type: integer, default: 100 }
+        isStackable: { type: boolean, default: false }
     CreateSurchargeRequest:
       type: object
       required: [code, name, surchargeType, calcType]

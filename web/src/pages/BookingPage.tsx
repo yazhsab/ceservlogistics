@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   Box,
+  Calculator,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -28,7 +29,7 @@ import {
   type UseFormSetValue,
   type UseFormRegister,
 } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import {
   ApiError,
@@ -210,7 +211,13 @@ type PackageTypePreset = {
   heightMm: number;
   maxWeightGrams?: number;
 };
-type GeographyState = { id: string; code: string; name: string };
+type GeographyState = {
+  id: string;
+  code: string;
+  name: string;
+  capitalCity?: string;
+  capitalPincode?: string;
+};
 type GeographyDistrict = {
   id: string;
   code: string;
@@ -278,6 +285,29 @@ function createBookingRequest(values: BookingValues): BookingRequest {
   };
 }
 
+function packageWeightTotalGrams(items: BookingValues["packages"]) {
+  return items.reduce(
+    (total, item) => total + (kgToGrams(item.actualWeightKg) ?? 0),
+    0,
+  );
+}
+
+function weightInputFromGrams(grams: number) {
+  return (grams / 1000).toFixed(3).replace(/\.?0+$/, "");
+}
+
+function distributePackageWeight(
+  totalGrams: number,
+  items: BookingValues["packages"],
+) {
+  const baseGrams = Math.floor(totalGrams / items.length);
+  const remainderGrams = totalGrams % items.length;
+  return items.map((item, index) => ({
+    ...item,
+    actualWeightKg: (baseGrams + (index < remainderGrams ? 1 : 0)) / 1000,
+  }));
+}
+
 export default function BookingPage() {
   const { toast } = useToast();
   const { hasPermission } = useAuth();
@@ -297,6 +327,9 @@ export default function BookingPage() {
   const lastBody = useRef<string | undefined>(undefined);
   const lastAutomaticPreview = useRef<string | undefined>(undefined);
   const [submissionMessage, setSubmissionMessage] = useState("");
+  const [totalWeightInput, setTotalWeightInput] = useState("0.5");
+  const [totalWeightEditing, setTotalWeightEditing] = useState(false);
+  const [totalWeightError, setTotalWeightError] = useState("");
   const {
     register,
     control,
@@ -346,6 +379,7 @@ export default function BookingPage() {
   });
   const packages = useFieldArray({ control, name: "packages" });
   const bookingValues = useWatch({ control });
+  const watchedPackages = useWatch({ control, name: "packages" });
   const paymentMode = watch("paymentMode");
   const customerId = watch("customerId");
   const customers = useQuery({
@@ -378,6 +412,13 @@ export default function BookingPage() {
         "/api/v1/pricing/package-types",
       ),
   });
+
+  useEffect(() => {
+    if (totalWeightEditing) return;
+    setTotalWeightInput(
+      weightInputFromGrams(packageWeightTotalGrams(watchedPackages)),
+    );
+  }, [totalWeightEditing, watchedPackages]);
 
   useEffect(() => {
     const subscription = watch(() => {
@@ -621,18 +662,53 @@ export default function BookingPage() {
     const count = Math.min(50, Math.max(1, Math.trunc(requestedCount || 1)));
     const current = getValues("packages");
     if (count === current.length) return;
-    if (count < current.length) {
-      packages.replace(current.slice(0, count));
+    const totalGrams = packageWeightTotalGrams(current);
+    const resized =
+      count < current.length
+        ? current.slice(0, count)
+        : [
+            ...current,
+            ...Array.from({ length: count - current.length }, () => ({
+              reference: "",
+              actualWeightKg: 0.001,
+              contentDescription: "",
+            })),
+          ];
+    packages.replace(
+      distributePackageWeight(Math.max(totalGrams, count), resized),
+    );
+    setTotalWeightError("");
+  };
+  const applyTotalWeight = () => {
+    const normalized = totalWeightInput.trim();
+    if (!/^\d+(\.\d{1,3})?$/.test(normalized)) {
+      setTotalWeightError("Enter a weight with up to three decimal places.");
       return;
     }
-    packages.replace([
-      ...current,
-      ...Array.from({ length: count - current.length }, () => ({
-        reference: "",
-        actualWeightKg: 0.5,
-        contentDescription: "",
-      })),
-    ]);
+    const totalGrams = Math.round(Number(normalized) * 1000);
+    if (totalGrams < packages.fields.length) {
+      setTotalWeightError(
+        `Enter at least ${weightInputFromGrams(packages.fields.length)} kg so every package has a measurable weight.`,
+      );
+      return;
+    }
+    packages.replace(
+      distributePackageWeight(totalGrams, getValues("packages")),
+    );
+    setTotalWeightInput(weightInputFromGrams(totalGrams));
+    setTotalWeightError("");
+  };
+  const removePackage = (index: number) => {
+    const current = getValues("packages");
+    if (current.length <= 1) return;
+    const totalGrams = packageWeightTotalGrams(current);
+    packages.replace(
+      distributePackageWeight(
+        totalGrams,
+        current.filter((_, itemIndex) => itemIndex !== index),
+      ),
+    );
+    setTotalWeightError("");
   };
   const startNew = () => {
     reset();
@@ -645,6 +721,8 @@ export default function BookingPage() {
     setSuccess(undefined);
     setSelectedCustomer(undefined);
     setCustomerQuery("");
+    setTotalWeightInput("0.5");
+    setTotalWeightError("");
     setIdempotencyKey(crypto.randomUUID());
     lastBody.current = undefined;
   };
@@ -663,9 +741,21 @@ export default function BookingPage() {
         title="Book shipment"
         description="Keyboard-first booking with server-verified serviceability, route, price, and duplicate protection."
         actions={
-          <div className="hidden text-right text-xs text-slate-500 sm:block">
-            <kbd className="rounded border bg-white px-1.5 py-0.5">⌘ Enter</kbd>
-            <span className="ml-2">Preview, then book</span>
+          <div className="flex items-center gap-3">
+            {hasPermission("pricing.quote") ? (
+              <Link
+                to="/pricing/simulator"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              >
+                <Calculator aria-hidden className="h-4 w-4" /> Price inquiry
+              </Link>
+            ) : null}
+            <div className="hidden text-right text-xs text-slate-500 sm:block">
+              <kbd className="rounded border bg-white px-1.5 py-0.5">
+                ⌘ Enter
+              </kbd>
+              <span className="ml-2">Preview, then book</span>
+            </div>
           </div>
         }
       />
@@ -934,7 +1024,7 @@ export default function BookingPage() {
                     </Badge>
                   }
                 />
-                <div className="grid items-end gap-3 border-b bg-slate-50 p-4 sm:grid-cols-[180px_minmax(0,1fr)_auto]">
+                <div className="grid items-end gap-3 border-b bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-[160px_180px_minmax(0,1fr)_auto]">
                   <Field label="Number of packages" htmlFor="packageCount">
                     <Input
                       id="packageCount"
@@ -947,20 +1037,43 @@ export default function BookingPage() {
                       }
                     />
                   </Field>
-                  <p className="pb-2 text-xs leading-5 text-slate-500">
-                    Use one package entry for every physical box. Each package
-                    receives its own piece barcode under the same shipment AWB.
+                  <Field
+                    label="Total weight (kg)"
+                    htmlFor="totalShipmentWeight"
+                    error={totalWeightError}
+                    hint="Automatically split across all packages."
+                  >
+                    <Input
+                      id="totalShipmentWeight"
+                      type="number"
+                      min={0.001}
+                      step={0.001}
+                      value={totalWeightInput}
+                      onFocus={() => setTotalWeightEditing(true)}
+                      onChange={(event) => {
+                        setTotalWeightInput(event.target.value);
+                        setTotalWeightError("");
+                      }}
+                      onBlur={() => {
+                        applyTotalWeight();
+                        setTotalWeightEditing(false);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }}
+                    />
+                  </Field>
+                  <p className="pb-2 text-xs leading-5 text-slate-500 sm:col-span-2 lg:col-span-1">
+                    Each physical box receives its own piece barcode. Weight is
+                    split to the nearest gram; any remainder starts with piece
+                    1. Individual weights remain editable below.
                   </p>
                   <Button
                     type="button"
                     size="sm"
-                    onClick={() =>
-                      packages.append({
-                        reference: "",
-                        actualWeightKg: 0.5,
-                        contentDescription: "",
-                      })
-                    }
+                    onClick={() => resizePackages(packages.fields.length + 1)}
                     disabled={packages.fields.length >= 50}
                   >
                     <Plus aria-hidden className="h-4 w-4" /> Add package
@@ -978,7 +1091,7 @@ export default function BookingPage() {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => packages.remove(index)}
+                            onClick={() => removePackage(index)}
                           >
                             <Trash2 aria-hidden className="h-4 w-4" /> Remove
                           </Button>
@@ -1609,7 +1722,24 @@ function AddressFields({
         error={errors?.state?.message}
       >
         {states.data?.data.length ? (
-          <Select id={`${prefix}-state`} {...register(`${prefix}.state`)}>
+          <Select
+            id={`${prefix}-state`}
+            {...register(`${prefix}.state`)}
+            onChange={(event) => {
+              const state = states.data?.data.find(
+                (item) => item.name === event.target.value,
+              );
+              setValue(`${prefix}.state`, event.target.value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              setValue(`${prefix}.district`, "", { shouldDirty: true });
+              setValue(`${prefix}.city`, state?.capitalCity ?? "", {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+            }}
+          >
             <option value="">Select state</option>
             {states.data?.data.map((state) => (
               <option key={state.id} value={state.name}>
@@ -1646,8 +1776,10 @@ function AddressFields({
         required
         error={errors?.city?.message}
         hint={
-          prefix === "recipient" && country === "NG"
-            ? "Choose a suggested city when available so the 2026 extended or remote-area charge is applied accurately."
+          country === "NG"
+            ? prefix === "recipient"
+              ? "Selecting a state fills its capital. Choose another suggested city when needed so the 2026 extended or remote-area charge is applied accurately."
+              : "Selecting a state fills its capital; change it when the address is in another city."
             : undefined
         }
       >

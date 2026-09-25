@@ -2687,15 +2687,17 @@ type ShipmentRouteSnapshot struct {
 }
 
 type State struct {
-	ID           int64
-	PublicID     string
-	CountryID    int64
-	Code         string
-	Name         string
-	GstStateCode *string
-	Status       string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             int64
+	PublicID       string
+	CountryID      int64
+	Code           string
+	Name           string
+	GstStateCode   *string
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	CapitalCity    *string
+	CapitalPincode *string
 }
 
 type StateBaseRate struct {

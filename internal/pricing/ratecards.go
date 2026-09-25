@@ -303,6 +303,63 @@ func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) error {
 			"minChargeableWeightGrams": zr.MinChargeableWeightGrams,
 		})
 	}
+	slabs, err := h.q.ListWeightSlabs(r.Context(), dbgen.ListWeightSlabsParams{
+		RateCardVersionID: ver.ID, RowLimit: 2000, RowOffset: 0,
+	})
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	slabItems := make([]map[string]any, 0, len(slabs))
+	for _, slab := range slabs {
+		slabItems = append(slabItems, map[string]any{
+			"id": slab.PublicID, "serviceCode": slab.ServiceCode,
+			"originZoneCode": slab.OriginZoneCode, "destinationZoneCode": slab.DestinationZoneCode,
+			"fromWeightGrams": slab.FromWeightGrams, "toWeightGrams": slab.ToWeightGrams,
+			"priceMinor": slab.PriceMinor, "additionalStepGrams": slab.AdditionalStepGrams,
+			"additionalPriceMinor": slab.AdditionalPriceMinor, "sequence": slab.Sequence,
+		})
+	}
+	domesticRows, err := h.engine.db.Pool.Query(r.Context(), `
+		SELECT d.public_id, svc.code, s.code, s.name, d.rate_zone_code,
+		       d.from_weight_grams, d.to_weight_grams, d.price_minor,
+		       d.additional_step_grams, d.additional_price_minor,
+		       d.source_sheet, d.source_cell
+		  FROM domestic_weight_slabs d
+		  JOIN courier_services svc ON svc.id=d.courier_service_id
+		  JOIN states s ON s.id=d.origin_state_id
+		 WHERE d.rate_card_version_id=$1
+		 ORDER BY svc.code,s.name,d.rate_zone_code,d.from_weight_grams`, ver.ID)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	defer domesticRows.Close()
+	domesticSlabItems := make([]map[string]any, 0)
+	for domesticRows.Next() {
+		var id, serviceCode, originStateCode, originStateName, rateZoneCode string
+		var fromWeight int32
+		var toWeight, additionalStep *int32
+		var price int64
+		var additionalPrice *int64
+		var sourceSheet, sourceCell string
+		if err := domesticRows.Scan(
+			&id, &serviceCode, &originStateCode, &originStateName, &rateZoneCode,
+			&fromWeight, &toWeight, &price, &additionalStep, &additionalPrice,
+			&sourceSheet, &sourceCell,
+		); err != nil {
+			return apierr.Internal(err)
+		}
+		domesticSlabItems = append(domesticSlabItems, map[string]any{
+			"id": id, "serviceCode": serviceCode,
+			"originStateCode": originStateCode, "originStateName": originStateName,
+			"rateZoneCode": rateZoneCode, "fromWeightGrams": fromWeight,
+			"toWeightGrams": toWeight, "priceMinor": price,
+			"additionalStepGrams": additionalStep, "additionalPriceMinor": additionalPrice,
+			"sourceSheet": sourceSheet, "sourceCell": sourceCell,
+		})
+	}
+	if err := domesticRows.Err(); err != nil {
+		return apierr.Internal(err)
+	}
 	surcharges, err := h.q.ListAllSurchargeRules(r.Context(), dbgen.ListAllSurchargeRulesParams{
 		RateCardVersionID: ver.ID, RowLimit: 200, RowOffset: 0,
 	})
@@ -319,6 +376,23 @@ func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) error {
 			"minAmountMinor": s.MinAmountMinor, "maxAmountMinor": s.MaxAmountMinor,
 		})
 	}
+	discounts, err := h.q.ListAllDiscountRules(r.Context(), dbgen.ListAllDiscountRulesParams{
+		RateCardVersionID: ver.ID, RowLimit: 500, RowOffset: 0,
+	})
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	discountItems := make([]map[string]any, 0, len(discounts))
+	for _, discount := range discounts {
+		discountItems = append(discountItems, map[string]any{
+			"id": discount.PublicID, "code": discount.Code, "name": discount.Name,
+			"discountType": discount.DiscountType, "valueMinor": discount.ValueMinor,
+			"percentageBp": discount.PercentageBp, "appliesTo": discount.AppliesTo,
+			"serviceCode": discount.ServiceCode, "minSubtotalMinor": discount.MinSubtotalMinor,
+			"maxDiscountMinor": discount.MaxDiscountMinor, "conditions": decodeJSON(discount.Conditions),
+			"priority": discount.Priority, "isStackable": discount.IsStackable,
+		})
+	}
 	return httpx.OK(w, map[string]any{
 		"id": ver.PublicID, "rateCardCode": ver.RateCardCode, "rateCardId": ver.RateCardPublicID,
 		"version": ver.Version, "status": ver.Status, "currency": ver.Currency,
@@ -328,9 +402,12 @@ func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) error {
 			"zoneRates": counts.ZoneRateCount, "weightSlabs": counts.SlabCount,
 			"surcharges": counts.SurchargeCount, "discounts": counts.DiscountCount,
 		},
-		"zoneRates":  rateItems,
-		"surcharges": surchargeItems,
-		"editable":   ver.Status == "DRAFT",
+		"zoneRates":           rateItems,
+		"weightSlabs":         slabItems,
+		"domesticWeightSlabs": domesticSlabItems,
+		"surcharges":          surchargeItems,
+		"discounts":           discountItems,
+		"editable":            ver.Status == "DRAFT",
 	})
 }
 

@@ -257,6 +257,14 @@ WHERE rate_card_version_id = sqlc.arg('rate_card_version_id')
   AND (courier_service_id IS NULL OR courier_service_id = sqlc.arg('courier_service_id'))
 ORDER BY priority, id;
 
+-- name: ListAllDiscountRules :many
+SELECT dr.*, s.code AS service_code, count(*) OVER () AS total_count
+FROM discount_rules dr
+LEFT JOIN courier_services s ON s.id = dr.courier_service_id
+WHERE dr.rate_card_version_id = sqlc.arg('rate_card_version_id')
+ORDER BY dr.priority, dr.id
+LIMIT sqlc.arg('row_limit') OFFSET sqlc.arg('row_offset');
+
 -- name: DeleteDiscountRule :execrows
 DELETE FROM discount_rules WHERE public_id = $1 AND organization_id = $2;
 

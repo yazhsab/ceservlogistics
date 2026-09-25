@@ -92,10 +92,12 @@ func (h *Handler) listCountries(w http.ResponseWriter, r *http.Request) error {
 }
 
 type stateView struct {
-	ID           string `json:"id"`
-	Code         string `json:"code"`
-	Name         string `json:"name"`
-	GSTStateCode string `json:"gstStateCode,omitempty"`
+	ID             string `json:"id"`
+	Code           string `json:"code"`
+	Name           string `json:"name"`
+	GSTStateCode   string `json:"gstStateCode,omitempty"`
+	CapitalCity    string `json:"capitalCity,omitempty"`
+	CapitalPincode string `json:"capitalPincode,omitempty"`
 }
 
 func (h *Handler) listStates(w http.ResponseWriter, r *http.Request) error {
@@ -109,6 +111,12 @@ func (h *Handler) listStates(w http.ResponseWriter, r *http.Request) error {
 		v := stateView{ID: s.PublicID, Code: s.Code, Name: s.Name}
 		if s.GstStateCode != nil {
 			v.GSTStateCode = *s.GstStateCode
+		}
+		if s.CapitalCity != nil {
+			v.CapitalCity = *s.CapitalCity
+		}
+		if s.CapitalPincode != nil {
+			v.CapitalPincode = *s.CapitalPincode
 		}
 		out = append(out, v)
 	}

@@ -1867,6 +1867,10 @@ export interface paths {
                 code?: string;
                 name?: string;
                 gstStateCode?: string;
+                /** @description Canonical state capital used as an address-entry default. */
+                capitalCity?: string;
+                /** @description Reference postcode for the capital; serviceability still uses the user's actual postcode. */
+                capitalPincode?: string;
               }[];
             };
           };
@@ -3132,7 +3136,7 @@ export interface paths {
     };
     /**
      * Get a rate card version
-     * @description Includes its zone rates and surcharges, and whether it is still editable.
+     * @description Includes its zone rates, weight slabs, surcharges, discounts, and whether it is still editable.
      */
     get: {
       parameters: {
@@ -3272,6 +3276,101 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": components["schemas"]["CreateSurchargeRequest"];
+        };
+      };
+      responses: {
+        /** @description Created. */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        403: components["responses"]["Forbidden"];
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/rate-cards/versions/{versionId}/weight-slabs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        versionId: components["parameters"]["VersionId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add an exact weight price slab
+     * @description Requires `rate_card.manage` and a `DRAFT` version. Slabs for the same service and lane cannot overlap.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          versionId: components["parameters"]["VersionId"];
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateWeightSlabRequest"];
+        };
+      };
+      responses: {
+        /** @description Created. */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        403: components["responses"]["Forbidden"];
+        409: components["responses"]["Conflict"];
+        422: components["responses"]["ValidationFailed"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/rate-cards/versions/{versionId}/discounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        versionId: components["parameters"]["VersionId"];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a discount rule
+     * @description Requires `rate_card.manage` and a `DRAFT` version. Customer-specific discounts belong on a BUSINESS rate card associated with that customer.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          versionId: components["parameters"]["VersionId"];
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["CreateDiscountRequest"];
         };
       };
       responses: {
@@ -9860,9 +9959,53 @@ export interface components {
       zoneRates?: {
         [key: string]: unknown;
       }[];
+      weightSlabs?: {
+        [key: string]: unknown;
+      }[];
+      /** @description Versioned domestic tariff categories keyed by origin state and commercial rate zone. */
+      domesticWeightSlabs?: {
+        [key: string]: unknown;
+      }[];
       surcharges?: {
         [key: string]: unknown;
       }[];
+      discounts?: {
+        [key: string]: unknown;
+      }[];
+    };
+    CreateWeightSlabRequest: {
+      serviceCode: string;
+      originZoneCode: string;
+      destinationZoneCode: string;
+      fromWeightGrams: number;
+      /** @description Exclusive upper bound. Omit only for the final open-ended slab. */
+      toWeightGrams?: number;
+      priceMinor: components["schemas"]["MinorAmount"];
+      additionalStepGrams?: number;
+      additionalPriceMinor?: components["schemas"]["MinorAmount"];
+      sequence?: number;
+    };
+    CreateDiscountRequest: {
+      code: components["schemas"]["Code"];
+      name: string;
+      /** @enum {string} */
+      discountType: "FIXED" | "PERCENTAGE";
+      /** @description Required for FIXED. */
+      valueMinor?: components["schemas"]["MinorAmount"];
+      /** @description Required for PERCENTAGE. */
+      percentageBp?: components["schemas"]["BasisPoints"];
+      /**
+       * @default FREIGHT
+       * @enum {string}
+       */
+      appliesTo: "FREIGHT" | "FREIGHT_PLUS_SURCHARGES";
+      serviceCode?: string;
+      minSubtotalMinor?: components["schemas"]["MinorAmount"];
+      maxDiscountMinor?: components["schemas"]["MinorAmount"];
+      /** @default 100 */
+      priority: number;
+      /** @default false */
+      isStackable: boolean;
     };
     CreateSurchargeRequest: {
       code: components["schemas"]["Code"];

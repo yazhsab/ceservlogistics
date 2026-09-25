@@ -2938,6 +2938,16 @@ INSERT INTO ceserve_state_network VALUES
     ('YO', 'Damaturu', '620212', 'NG-NE', 'HUB_ABUJA'),
     ('ZA', 'Gusau', '860241', 'NG-NW', 'HUB_ABUJA');
 
+-- Keep the shared geography catalogue aligned with the reviewed network
+-- source. The booking UI uses only capital_city as a convenient default; the
+-- user's actual postcode still controls serviceability and price.
+UPDATE states s
+SET capital_city=n.capital,
+    capital_pincode=n.capital_pincode
+FROM ceserve_state_network n
+JOIN countries c ON c.iso2='NG'
+WHERE s.country_id=c.id AND s.code=n.state_code;
+
 CREATE TEMP TABLE ceserve_hubs(
     code text PRIMARY KEY,
     name text NOT NULL,

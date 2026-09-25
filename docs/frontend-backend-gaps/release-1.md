@@ -23,8 +23,8 @@ The Release 1 frontend implements every workflow that can be represented safely 
 ## Products and pricing
 
 11. **Courier-product updates are limited.** The PATCH schema does not expose every field described by the release contract, so limits, service levels, and handling restrictions cannot all be edited after creation.
-12. **Discount administration is absent.** OpenAPI has no discount list or mutation operations.
-13. **Weight-slab CRUD is absent.** The current pricing contract exposes linear zone-rate creation and version-level surcharge creation; it does not expose spreadsheet-like slab rows or their edit/delete lifecycle.
+12. **Discount administration is partial.** OpenAPI now exposes draft discount creation and the version detail lists its rules. Update/delete operations are still absent; correct a published rule through a new version.
+13. **Weight-slab administration is partial.** OpenAPI now exposes draft slab creation, lists generic slabs and returns the versioned domestic price list. Bulk spreadsheet editing and row update/delete operations remain absent.
 14. **Rate-card lifecycle operations are incomplete.** There is no rate-card detail or update operation, and version update/delete is absent. The rate-card list is a generic untyped page.
 
 ## Customers, identity, and authorization

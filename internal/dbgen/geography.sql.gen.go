@@ -411,7 +411,7 @@ func (q *Queries) GetPincodeIDByCodeInCountry(ctx context.Context, arg GetPincod
 }
 
 const getStateByCode = `-- name: GetStateByCode :one
-SELECT id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at FROM states WHERE country_id = $1 AND code = $2
+SELECT id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at, capital_city, capital_pincode FROM states WHERE country_id = $1 AND code = $2
 `
 
 type GetStateByCodeParams struct {
@@ -432,12 +432,14 @@ func (q *Queries) GetStateByCode(ctx context.Context, arg GetStateByCodeParams) 
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapitalCity,
+		&i.CapitalPincode,
 	)
 	return i, err
 }
 
 const getStateByName = `-- name: GetStateByName :one
-SELECT id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at FROM states WHERE country_id = $1 AND lower(name) = lower($2)
+SELECT id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at, capital_city, capital_pincode FROM states WHERE country_id = $1 AND lower(name) = lower($2)
 `
 
 type GetStateByNameParams struct {
@@ -458,6 +460,8 @@ func (q *Queries) GetStateByName(ctx context.Context, arg GetStateByNameParams) 
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapitalCity,
+		&i.CapitalPincode,
 	)
 	return i, err
 }
@@ -992,7 +996,7 @@ func (q *Queries) ListPincodeZoneMappings(ctx context.Context, arg ListPincodeZo
 }
 
 const listStates = `-- name: ListStates :many
-SELECT s.id, s.public_id, s.country_id, s.code, s.name, s.gst_state_code, s.status, s.created_at, s.updated_at FROM states s
+SELECT s.id, s.public_id, s.country_id, s.code, s.name, s.gst_state_code, s.status, s.created_at, s.updated_at, s.capital_city, s.capital_pincode FROM states s
 JOIN countries c ON c.id = s.country_id
 WHERE c.iso2 = $1 AND s.status = 'ACTIVE'
 ORDER BY s.name
@@ -1017,6 +1021,8 @@ func (q *Queries) ListStates(ctx context.Context, countryIso2 string) ([]State, 
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CapitalCity,
+			&i.CapitalPincode,
 		); err != nil {
 			return nil, err
 		}
@@ -1872,7 +1878,7 @@ INSERT INTO states (public_id, country_id, code, name, gst_state_code)
 VALUES ($1,$2,$3,$4,$5)
 ON CONFLICT (country_id, code) DO UPDATE
     SET name = EXCLUDED.name, gst_state_code = COALESCE(EXCLUDED.gst_state_code, states.gst_state_code)
-RETURNING id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at
+RETURNING id, public_id, country_id, code, name, gst_state_code, status, created_at, updated_at, capital_city, capital_pincode
 `
 
 type UpsertStateParams struct {
@@ -1902,6 +1908,8 @@ func (q *Queries) UpsertState(ctx context.Context, arg UpsertStateParams) (State
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CapitalCity,
+		&i.CapitalPincode,
 	)
 	return i, err
 }

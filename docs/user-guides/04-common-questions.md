@@ -73,6 +73,18 @@ Format validation and service coverage are different checks. The country, postal
 
 The chargeable weight can reflect dimensions, minimum chargeable weight and configured rounding as well as actual weight. Check the measurements and their units, then read the preview's charge breakdown. Goods value, COD, surcharges, tax and transport charges are separate amounts.
 
+### Where can I check a price without booking a shipment
+
+Use **Price inquiry** on the booking page or open **Commercial → Pricing simulator**. Enter the origin and destination postal codes, destination city, courier product and package measurements. Select the customer when checking a negotiated business price. The simulator uses the same server pricing engine as booking and does not create an AWB.
+
+### Are prices configured for each weight category
+
+Open **Commercial → Rate cards**, select the applicable card and open its active version. **Weight price list** shows the configured service, lane or domestic tariff zone, weight range and price. The current CESERV 2026 domestic schedule contains 424 supplied weight-price rows, including the configured charge above 70 kg. The booking preview still provides the final price because volumetric weight, surcharges, discounts and insurance can change the total.
+
+### How is a discount applied to one customer
+
+A pricing administrator creates a **BUSINESS** rate card associated with that customer, adds the approved discount to a complete draft version and activates it. Booking must use that customer record. The server then selects the customer card and shows the applied discount in the price breakdown. The customs goods discount is separate and must not be used to imitate a transport discount.
+
 ### Is insurance always 1 percent
 
 No. An administrator configures insurance rules on the applicable rate-card version. The rule can use a percentage, fixed charge or per-kilogram charge with restrictions or limits. The current preview gives the actual premium. There is no automatic 1% fallback when insurance is unconfigured.

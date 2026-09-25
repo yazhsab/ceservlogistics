@@ -827,6 +827,83 @@ func (q *Queries) GetRateCardVersionByPublicID(ctx context.Context, arg GetRateC
 	return i, err
 }
 
+const listAllDiscountRules = `-- name: ListAllDiscountRules :many
+SELECT dr.id, dr.public_id, dr.organization_id, dr.rate_card_version_id, dr.code, dr.name, dr.discount_type, dr.value_minor, dr.percentage_bp, dr.applies_to, dr.courier_service_id, dr.min_subtotal_minor, dr.max_discount_minor, dr.conditions, dr.priority, dr.is_stackable, dr.created_at, s.code AS service_code, count(*) OVER () AS total_count
+FROM discount_rules dr
+LEFT JOIN courier_services s ON s.id = dr.courier_service_id
+WHERE dr.rate_card_version_id = $1
+ORDER BY dr.priority, dr.id
+LIMIT $3 OFFSET $2
+`
+
+type ListAllDiscountRulesParams struct {
+	RateCardVersionID int64
+	RowOffset         int32
+	RowLimit          int32
+}
+
+type ListAllDiscountRulesRow struct {
+	ID                int64
+	PublicID          string
+	OrganizationID    int64
+	RateCardVersionID int64
+	Code              string
+	Name              string
+	DiscountType      string
+	ValueMinor        *int64
+	PercentageBp      *int32
+	AppliesTo         string
+	CourierServiceID  *int64
+	MinSubtotalMinor  int64
+	MaxDiscountMinor  *int64
+	Conditions        []byte
+	Priority          int32
+	IsStackable       bool
+	CreatedAt         time.Time
+	ServiceCode       *string
+	TotalCount        int64
+}
+
+func (q *Queries) ListAllDiscountRules(ctx context.Context, arg ListAllDiscountRulesParams) ([]ListAllDiscountRulesRow, error) {
+	rows, err := q.db.Query(ctx, listAllDiscountRules, arg.RateCardVersionID, arg.RowOffset, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllDiscountRulesRow{}
+	for rows.Next() {
+		var i ListAllDiscountRulesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.OrganizationID,
+			&i.RateCardVersionID,
+			&i.Code,
+			&i.Name,
+			&i.DiscountType,
+			&i.ValueMinor,
+			&i.PercentageBp,
+			&i.AppliesTo,
+			&i.CourierServiceID,
+			&i.MinSubtotalMinor,
+			&i.MaxDiscountMinor,
+			&i.Conditions,
+			&i.Priority,
+			&i.IsStackable,
+			&i.CreatedAt,
+			&i.ServiceCode,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllSurchargeRules = `-- name: ListAllSurchargeRules :many
 SELECT sr.id, sr.public_id, sr.organization_id, sr.rate_card_version_id, sr.code, sr.name, sr.surcharge_type, sr.calc_type, sr.value_minor, sr.percentage_bp, sr.applies_to, sr.min_amount_minor, sr.max_amount_minor, sr.courier_service_id, sr.conditions, sr.priority, sr.is_taxable, sr.created_at, s.code AS service_code, count(*) OVER () AS total_count
 FROM surcharge_rules sr

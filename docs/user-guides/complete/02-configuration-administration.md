@@ -146,8 +146,8 @@ State-wise base costs provide a fallback where a more specific configured lane o
 
 1. Create or select the rate card. Review its code, name and **Scope**: **RETAIL**, **BUSINESS** or **FRANCHISE**. Check any customer or franchise assignment and the default retail choice.
 2. Open the card and choose **Create draft version**. Enter the effective dates and a useful change note.
-3. Populate every required lane using **Set lane rate**. Select the service and origin and destination zones, then enter the base weight, base price, additional step, additional price and minimum chargeable weight as applicable.
-4. Use **Add surcharge** for each approved fuel, handling, insurance or other rule that belongs in the version. Review the basis, service restriction, limits, priority and tax treatment.
+3. Populate every required lane using **Set lane rate**. Select the service and origin and destination zones, then enter the base weight, base price, additional step, additional price and minimum chargeable weight as applicable. Use **Add weight price** when the approved schedule supplies an exact price for each weight category; ranges for the same lane must not overlap.
+4. Use **Add surcharge** for each approved fuel, handling, insurance or other rule. Use **Add discount** for an approved fixed or percentage reduction. Review the basis, service restriction, limits, priority, stacking and tax treatment.
 5. Review the entire draft against the approved schedule. When ready, select **Activate version** and read the publication confirmation before completing it.
 6. Run the **Pricing simulator** and a booking preview using the intended customer, lane, product, package measurements and payment arrangement. Confirm the returned breakdown and effective version where shown.
 
@@ -166,6 +166,12 @@ State-wise base costs provide a fallback where a more specific configured lane o
 **After activation:** the version is immutable. Correct a published schedule with a new complete draft and an approved effective date. Historical bookings retain their saved commercial information; changing a future rate is not a way to rewrite an old charge.
 
 **If no price is found:** check the card assignment, active dates, product and zone codes, lane direction and weight rules. A route can be serviceable while its applicable price is missing. Resolve the configuration instead of substituting an unrelated customer's rate.
+
+### Apply a customer-specific discount
+
+Create a **BUSINESS** rate card and select the customer in the card's **Customer** search. Create a complete draft version, including the required transport prices, then add the discount and activate the version after approval. The booking form sends the selected customer to the pricing engine, which chooses that customer's active business card and shows the discount as its own negative line in the preview. Do not type an ad-hoc shipping discount into the customs goods-discount field; that field changes the declared goods value, not the transport tariff.
+
+To review prices, open the active version's **Weight price list**. For a customer inquiry without booking, use **Commercial → Pricing simulator**, enter the route, product, customer where applicable and measurements, and select **Calculate price**.
 
 <!-- page -->
 ## Configure shipment insurance

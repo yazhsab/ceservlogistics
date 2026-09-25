@@ -107,8 +107,18 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
     route.fulfill({
       json: {
         data: [
-          { id: "state-lagos", code: "LA", name: "Lagos" },
-          { id: "state-fct", code: "FC", name: "FCT" },
+          {
+            id: "state-lagos",
+            code: "LA",
+            name: "Lagos",
+            capitalCity: "Ikeja",
+          },
+          {
+            id: "state-fct",
+            code: "FC",
+            name: "FCT",
+            capitalCity: "Abuja",
+          },
         ],
       },
     }),
@@ -127,7 +137,9 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
     .getByRole("combobox", { name: "State", exact: true })
     .first()
     .selectOption("Lagos");
-  await page.getByLabel("City / state capital").first().fill("Lagos");
+  await expect(page.getByLabel("City / state capital").first()).toHaveValue(
+    "Ikeja",
+  );
   await page.getByLabel("Contact name").nth(1).fill("Amina Bello");
   await page.getByLabel("Phone").nth(1).fill("08037654321");
   await page.getByLabel("Address line 1").nth(1).fill("8 Gimbiya Street");
@@ -136,9 +148,19 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
     .getByRole("combobox", { name: "State", exact: true })
     .nth(1)
     .selectOption("FCT");
-  await page.getByLabel("City / state capital").nth(1).fill("Abuja");
+  await expect(page.getByLabel("City / state capital").nth(1)).toHaveValue(
+    "Abuja",
+  );
   await page.getByLabel("Courier product").selectOption("EXPRESS");
   await page.getByLabel("General description of item").fill("Documents");
+  await page.getByLabel("Number of packages").fill("3");
+  await page.getByLabel("Total weight (kg)").fill("1");
+  await page.getByLabel("Total weight (kg)").press("Tab");
+  const weights = page.getByLabel("Shipment weight (kg)");
+  await expect(weights).toHaveCount(3);
+  await expect(weights.nth(0)).toHaveValue("0.334");
+  await expect(weights.nth(1)).toHaveValue("0.333");
+  await expect(weights.nth(2)).toHaveValue("0.333");
   await page.getByRole("button", { name: "Preview shipment" }).last().click();
   await expect(
     page.locator("strong:visible", { hasText: "Shipment charges total" }),
@@ -238,7 +260,9 @@ test("booked shipment can be corrected from the Edit column without changing its
     },
   );
   await login(page);
-  await expect(page.getByRole("columnheader", { name: "Action" })).toBeVisible();
+  await expect(
+    page.getByRole("columnheader", { name: "Action" }),
+  ).toBeVisible();
   await page.getByLabel(`Edit shipment ${shipment.awb}`).click();
   const dialog = page.getByRole("dialog", {
     name: `Edit shipment ${shipment.awb}`,

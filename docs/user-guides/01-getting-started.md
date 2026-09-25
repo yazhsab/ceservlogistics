@@ -64,7 +64,7 @@ This guide takes you from signing in to creating a customer and booking a shipme
 ### Complete the sender and recipient
 
 4. Choose a **Saved pickup address**, if available, or enter the sender's contact name, phone and collection address.
-5. In **2. Recipient**, enter the delivery contact and address. Select **Destination country** and enter its **Postal code**. Complete the state and city fields presented for that country.
+5. In **2. Recipient**, enter the delivery contact and address. Select **Destination country** and enter its **Postal code**. For Nigeria, selecting a state fills its capital as the initial city; replace it when the address is in another city.
 6. Check the address with the customer. A typed country and postal code still require a serviceability check in the preview.
 
 **Choose a customer still appears:** return to the search and click a result. If there are no results, confirm that the record exists and is active in the correct organization. A suspended or closed account is not offered in the booking lookup.
@@ -77,8 +77,8 @@ This guide takes you from signing in to creating a customer and booking a shipme
 ### Service and packages
 
 1. In **3. Service**, select the **Courier product** and enter the **General description of item**. Use a meaningful description of the contents.
-2. In **4. Packages**, enter every package and its actual weight. Follow the field labels: booking uses kilograms for weight and centimetres for dimensions.
-3. Check any package preset against the parcel actually presented. Enter correct measurements; the preview determines the chargeable weight and price.
+2. In **4. Packages**, enter the number of physical boxes and the **Total weight (kg)**. The form splits the total evenly to the nearest gram, assigning any remainder from piece 1. You can still correct each package's measured weight below.
+3. Check that the displayed package weights add back to the total. Follow the field labels: booking uses kilograms for weight and centimetres for dimensions. Check any package preset against the parcel actually presented; the preview determines the chargeable weight and price.
 
 ### Payment and declared goods value
 
