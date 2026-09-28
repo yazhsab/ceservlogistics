@@ -2877,7 +2877,10 @@ export interface paths {
      *
      *     The response is a line-by-line breakdown. Every amount is in minor
      *     units and every line carries a plain-language `explanation` you can show
-     *     to a customer. **Do not recompute the total client-side.**
+     *     to a customer. Internal staff may add an `inquiryDiscount` for a
+     *     one-off estimate; it is calculated before tax and never affects the
+     *     customer tariff or a later booking. **Do not recompute the total
+     *     client-side.**
      */
     post: {
       parameters: {
@@ -9812,9 +9815,38 @@ export interface components {
       /** @description Required and positive when `paymentMode` is COD; forbidden otherwise. */
       codAmountMinor?: components["schemas"]["MinorAmount"];
       insuranceRequired?: boolean;
+      /**
+       * @description Optional one-off staff concession for this price inquiry. It is
+       *     applied after configured rate-card discounts, is never persisted,
+       *     and does not change a customer's rate card or a later booking.
+       *     Portal and partner callers cannot submit this field.
+       */
+      inquiryDiscount?: components["schemas"]["InquiryDiscountRequest"];
       packages: components["schemas"]["PackageInput"][];
       /** Format: date-time */
       at?: string;
+    };
+    InquiryDiscountRequest: {
+      /** @enum {string} */
+      discountType: "FIXED" | "PERCENTAGE";
+      /** @description Required only for `FIXED`; must be greater than zero. */
+      valueMinor?: components["schemas"]["MinorAmount"];
+      /** @description Required only for `PERCENTAGE`; 100 basis points equals 1%. */
+      percentageBp?: number;
+    };
+    InquiryDiscountQuote: {
+      /** @enum {string} */
+      discountType: "FIXED" | "PERCENTAGE";
+      valueMinor?: components["schemas"]["MinorAmount"];
+      percentageBp?: number;
+      basisMinor: components["schemas"]["MinorAmount"];
+      amountMinor: components["schemas"]["MinorAmount"];
+      /** @description Server price, including tax, before the inquiry discount. */
+      originalTotalMinor: components["schemas"]["MinorAmount"];
+      /** @description Tax saved because the discount reduces the taxable amount. */
+      taxReductionMinor: components["schemas"]["MinorAmount"];
+      /** @description Final inquiry price after discount and tax recalculation. */
+      adjustedTotalMinor: components["schemas"]["MinorAmount"];
     };
     PackageInput: {
       reference?: string;
@@ -9880,6 +9912,7 @@ export interface components {
      */
     Quote: {
       insurance?: components["schemas"]["InsuranceQuote"];
+      inquiryDiscount?: components["schemas"]["InquiryDiscountQuote"];
       domesticTariff?: {
         rateZoneCode?: string;
         city?: string;

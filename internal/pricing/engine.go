@@ -29,7 +29,7 @@ import (
 
 // EngineVersion is stamped on every snapshot. Bump it whenever the calculation
 // changes so historical snapshots remain interpretable.
-const EngineVersion = "1.2.0"
+const EngineVersion = "1.3.0"
 
 // Line-item kinds, in the order they appear in a breakdown.
 const (
@@ -70,6 +70,7 @@ type QuoteInput struct {
 	DeclaredValueMinor int64
 	CODAmountMinor     int64
 	InsuranceRequired  bool
+	InquiryDiscount    *InquiryDiscountInput
 
 	OriginIsRemote bool
 	DestIsRemote   bool
@@ -78,6 +79,14 @@ type QuoteInput struct {
 
 	Currency money.Currency
 	At       time.Time
+}
+
+// InquiryDiscountInput describes a temporary staff-entered discount for one
+// price inquiry. It is not a rate-card rule and booking never supplies it.
+type InquiryDiscountInput struct {
+	DiscountType string
+	ValueMinor   *int64
+	PercentageBP *int32
 }
 
 // LineItem is one row of the price breakdown.
@@ -130,13 +139,28 @@ type Quote struct {
 	RoundingMinor       int64 `json:"roundingMinor"`
 	TotalMinor          int64 `json:"totalMinor"`
 
-	LineItems      []LineItem               `json:"lineItems"`
-	Insurance      *InsuranceQuote          `json:"insurance,omitempty"`
-	DomesticTariff *DomesticTariffSelection `json:"domesticTariff,omitempty"`
+	LineItems       []LineItem               `json:"lineItems"`
+	Insurance       *InsuranceQuote          `json:"insurance,omitempty"`
+	DomesticTariff  *DomesticTariffSelection `json:"domesticTariff,omitempty"`
+	InquiryDiscount *InquiryDiscountQuote    `json:"inquiryDiscount,omitempty"`
 
 	// internal identifiers for the booking snapshot
 	rateCardDBID        int64
 	rateCardVersionDBID int64
+}
+
+// InquiryDiscountQuote explains the one-off concession and reconciles the
+// original server price to the adjusted inquiry total. Tax is recalculated on
+// the reduced taxable amount, so taxReductionMinor is shown separately.
+type InquiryDiscountQuote struct {
+	DiscountType       string `json:"discountType"`
+	ValueMinor         *int64 `json:"valueMinor,omitempty"`
+	PercentageBP       *int32 `json:"percentageBp,omitempty"`
+	BasisMinor         int64  `json:"basisMinor"`
+	AmountMinor        int64  `json:"amountMinor"`
+	OriginalTotalMinor int64  `json:"originalTotalMinor"`
+	TaxReductionMinor  int64  `json:"taxReductionMinor"`
+	AdjustedTotalMinor int64  `json:"adjustedTotalMinor"`
 }
 
 // DomesticTariffSelection explains which supplied 2026 tariff destination was
@@ -282,10 +306,21 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 		return nil, err
 	}
 	quote.LineItems = append(quote.LineItems, discountItems...)
+	configuredDiscount := discount
+	inquiryDiscount, inquiryItem := computeInquiryDiscount(in, freight+discountableSurcharges, configuredDiscount)
+	if inquiryDiscount != nil {
+		discount += inquiryDiscount.AmountMinor
+		quote.InquiryDiscount = inquiryDiscount
+		quote.LineItems = append(quote.LineItems, inquiryItem)
+	}
 	quote.DiscountTotalMinor = discount
 
 	// 6. Taxable base: freight plus taxable surcharges, less discount, floored
 	// at zero so an over-generous discount cannot produce negative tax.
+	originalTaxable := freight + surchargeTaxable - configuredDiscount
+	if originalTaxable < 0 {
+		originalTaxable = 0
+	}
 	taxable := freight + surchargeTaxable - discount
 	if taxable < 0 {
 		taxable = 0
@@ -299,6 +334,14 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	}
 	quote.LineItems = append(quote.LineItems, taxItems...)
 	quote.TaxTotalMinor = taxTotal
+	if quote.InquiryDiscount != nil {
+		originalTaxTotal, _, taxErr := e.computeTax(ctx, in, originalTaxable)
+		if taxErr != nil {
+			return nil, taxErr
+		}
+		quote.InquiryDiscount.TaxReductionMinor = originalTaxTotal - taxTotal
+		quote.InquiryDiscount.OriginalTotalMinor = freight + surchargeTaxable + surchargeExempt - configuredDiscount + originalTaxTotal
+	}
 
 	// 8. Total. Every component is already an exact integer in minor units, so
 	// no further rounding is applied and roundingMinor is always zero. It is
@@ -309,8 +352,59 @@ func (e *Engine) Quote(ctx context.Context, in QuoteInput) (*Quote, error) {
 	if quote.TotalMinor < 0 {
 		quote.TotalMinor = 0
 	}
+	if quote.InquiryDiscount != nil {
+		quote.InquiryDiscount.AdjustedTotalMinor = quote.TotalMinor
+	}
 	fingerprintInsurance(quote, in)
 	return quote, nil
+}
+
+// computeInquiryDiscount applies a one-off discount after configured rate-card
+// discounts. Percentages use the remaining eligible freight and non-insurance
+// surcharges, while fixed discounts are capped at that same remaining amount.
+func computeInquiryDiscount(in QuoteInput, eligibleSubtotal, configuredDiscount int64) (*InquiryDiscountQuote, LineItem) {
+	if in.InquiryDiscount == nil {
+		return nil, LineItem{}
+	}
+	remaining := eligibleSubtotal - configuredDiscount
+	if remaining < 0 {
+		remaining = 0
+	}
+	discount := in.InquiryDiscount
+	var amount int64
+	var rate string
+	switch discount.DiscountType {
+	case "PERCENTAGE":
+		if discount.PercentageBP != nil {
+			bp := money.BasisPoints(*discount.PercentageBP)
+			amount = money.ApplyBP(remaining, bp)
+			rate = fmt.Sprintf("%.2f%%", bp.Float())
+		}
+	case "FIXED":
+		if discount.ValueMinor != nil {
+			amount = *discount.ValueMinor
+			rate = formatMinor(amount, in.Currency)
+		}
+	}
+	if amount > remaining {
+		amount = remaining
+	}
+	if amount < 0 {
+		amount = 0
+	}
+	result := &InquiryDiscountQuote{
+		DiscountType: discount.DiscountType,
+		ValueMinor:   discount.ValueMinor,
+		PercentageBP: discount.PercentageBP,
+		BasisMinor:   remaining,
+		AmountMinor:  amount,
+	}
+	return result, LineItem{
+		Kind: KindDiscount, Code: "INQUIRY_DISCOUNT", Label: "Inquiry discount",
+		AmountMinor: -amount, BasisMinor: remaining, Rate: rate,
+		Explanation: fmt.Sprintf("%s temporary inquiry discount on %s = -%s; this concession is not saved to the customer or booking",
+			rate, formatMinor(remaining, in.Currency), formatMinor(amount, in.Currency)),
+	}
 }
 
 // ComputeChargeableWeight derives billable weight from the packages.

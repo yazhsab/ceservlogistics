@@ -92,22 +92,33 @@ type packageRequest struct {
 	HeightMM          int `json:"heightMm,omitempty"`
 }
 
+// inquiryDiscountRequest is a temporary concession used only by the internal
+// pricing simulator. It is deliberately separate from versioned rate-card
+// discounts: it changes one inquiry response and is never persisted or carried
+// into shipment booking.
+type inquiryDiscountRequest struct {
+	DiscountType string `json:"discountType"`
+	ValueMinor   *int64 `json:"valueMinor,omitempty"`
+	PercentageBP *int32 `json:"percentageBp,omitempty"`
+}
+
 // QuoteRequest is the quote payload. Exported because the partner transport
 // (M32) accepts the same body on its own scope-gated endpoint.
 type QuoteRequest struct {
-	OriginCountry      string           `json:"originCountry,omitempty"`
-	DestinationCountry string           `json:"destinationCountry,omitempty"`
-	OriginPincode      string           `json:"originPincode"`
-	DestinationPincode string           `json:"destinationPincode"`
-	DestinationCity    string           `json:"destinationCity,omitempty"`
-	ServiceCode        string           `json:"serviceCode"`
-	CustomerID         string           `json:"customerId,omitempty"`
-	Packages           []packageRequest `json:"packages"`
-	PaymentMode        string           `json:"paymentMode"`
-	DeclaredValueMinor int64            `json:"declaredValueMinor,omitempty"`
-	CODAmountMinor     int64            `json:"codAmountMinor,omitempty"`
-	InsuranceRequired  bool             `json:"insuranceRequired,omitempty"`
-	At                 *time.Time       `json:"at,omitempty"`
+	OriginCountry      string                  `json:"originCountry,omitempty"`
+	DestinationCountry string                  `json:"destinationCountry,omitempty"`
+	OriginPincode      string                  `json:"originPincode"`
+	DestinationPincode string                  `json:"destinationPincode"`
+	DestinationCity    string                  `json:"destinationCity,omitempty"`
+	ServiceCode        string                  `json:"serviceCode"`
+	CustomerID         string                  `json:"customerId,omitempty"`
+	Packages           []packageRequest        `json:"packages"`
+	PaymentMode        string                  `json:"paymentMode"`
+	DeclaredValueMinor int64                   `json:"declaredValueMinor,omitempty"`
+	CODAmountMinor     int64                   `json:"codAmountMinor,omitempty"`
+	InsuranceRequired  bool                    `json:"insuranceRequired,omitempty"`
+	InquiryDiscount    *inquiryDiscountRequest `json:"inquiryDiscount,omitempty"`
+	At                 *time.Time              `json:"at,omitempty"`
 }
 
 // quote prices a hypothetical shipment.
@@ -163,6 +174,38 @@ func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req 
 	paymentMode := v.Enum("paymentMode", req.PaymentMode, PaymentModes, true)
 	v.NonNegativeMinor("declaredValueMinor", req.DeclaredValueMinor)
 	v.NonNegativeMinor("codAmountMinor", req.CODAmountMinor)
+	var inquiryDiscount *InquiryDiscountInput
+	if req.InquiryDiscount != nil {
+		if p.IsPortalUser || p.IsPartner {
+			return nil, apierr.Forbidden("Inquiry discounts are available only to internal staff.")
+		}
+		discountType := v.Enum("inquiryDiscount.discountType", req.InquiryDiscount.DiscountType, discountTypes, true)
+		switch discountType {
+		case "PERCENTAGE":
+			if req.InquiryDiscount.PercentageBP == nil {
+				v.Add("inquiryDiscount.percentageBp", "Required for a percentage discount.")
+			} else {
+				v.IntRange("inquiryDiscount.percentageBp", int(*req.InquiryDiscount.PercentageBP), 1, 10_000)
+			}
+			if req.InquiryDiscount.ValueMinor != nil {
+				v.Add("inquiryDiscount.valueMinor", "Do not provide a fixed amount for a percentage discount.")
+			}
+		case "FIXED":
+			if req.InquiryDiscount.ValueMinor == nil {
+				v.Add("inquiryDiscount.valueMinor", "Required for a fixed discount.")
+			} else {
+				v.Int64Range("inquiryDiscount.valueMinor", *req.InquiryDiscount.ValueMinor, 1, 1_000_000_000_000)
+			}
+			if req.InquiryDiscount.PercentageBP != nil {
+				v.Add("inquiryDiscount.percentageBp", "Do not provide a percentage for a fixed discount.")
+			}
+		}
+		inquiryDiscount = &InquiryDiscountInput{
+			DiscountType: discountType,
+			ValueMinor:   req.InquiryDiscount.ValueMinor,
+			PercentageBP: req.InquiryDiscount.PercentageBP,
+		}
+	}
 	if len(req.Packages) == 0 {
 		v.Add("packages", "At least one package is required.")
 	}
@@ -233,6 +276,7 @@ func (h *Handler) buildQuoteInput(ctx context.Context, p *tenant.Principal, req 
 		DeclaredValueMinor: req.DeclaredValueMinor,
 		CODAmountMinor:     req.CODAmountMinor,
 		InsuranceRequired:  req.InsuranceRequired,
+		InquiryDiscount:    inquiryDiscount,
 		OriginIsRemote:     originZone.IsRemote,
 		DestIsRemote:       destZone.IsRemote,
 		// GST is intra-state when both ends sit in the same state.

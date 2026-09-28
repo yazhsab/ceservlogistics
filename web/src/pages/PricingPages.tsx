@@ -61,21 +61,49 @@ type RecordPage = OffsetPageOf<Record<string, unknown>>;
 type WeightPriceRecord = Record<string, unknown> & {
   priceSource: "DOMESTIC" | "RATE_CARD";
 };
-const simulatorSchema = z.object({
-  originPincode: z.string().regex(/^[1-9][0-9]{5}$/),
-  destinationPincode: z.string().regex(/^[1-9][0-9]{5}$/),
-  destinationCity: z.string().min(1, "Enter the destination city."),
-  customerId: z.string().optional(),
-  serviceCode: z.string().min(1),
-  paymentMode: z.enum(["PREPAID", "COD", "CREDIT", "TO_PAY"]),
-  actualWeightKg: z.number().min(0.001).multipleOf(0.001),
-  lengthCm: z.number().min(0.1).multipleOf(0.1).optional(),
-  widthCm: z.number().min(0.1).multipleOf(0.1).optional(),
-  heightCm: z.number().min(0.1).multipleOf(0.1).optional(),
-  codAmount: z.string().optional(),
-  declaredValue: z.string().optional(),
-  insuranceRequired: z.boolean(),
-});
+const simulatorSchema = z
+  .object({
+    originPincode: z.string().regex(/^[1-9][0-9]{5}$/),
+    destinationPincode: z.string().regex(/^[1-9][0-9]{5}$/),
+    destinationCity: z.string().min(1, "Enter the destination city."),
+    customerId: z.string().optional(),
+    serviceCode: z.string().min(1),
+    paymentMode: z.enum(["PREPAID", "COD", "CREDIT", "TO_PAY"]),
+    actualWeightKg: z.number().min(0.001).multipleOf(0.001),
+    lengthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+    widthCm: z.number().min(0.1).multipleOf(0.1).optional(),
+    heightCm: z.number().min(0.1).multipleOf(0.1).optional(),
+    codAmount: z.string().optional(),
+    declaredValue: z.string().optional(),
+    insuranceRequired: z.boolean(),
+    inquiryDiscountType: z.enum(["NONE", "PERCENTAGE", "FIXED"]),
+    inquiryDiscountValue: z.string().optional(),
+  })
+  .superRefine((values, context) => {
+    if (values.inquiryDiscountType === "NONE") return;
+    if (
+      !values.inquiryDiscountValue ||
+      !/^\d+(\.\d{1,2})?$/.test(values.inquiryDiscountValue) ||
+      Number(values.inquiryDiscountValue) <= 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["inquiryDiscountValue"],
+        message: "Enter a discount greater than zero.",
+      });
+      return;
+    }
+    if (
+      values.inquiryDiscountType === "PERCENTAGE" &&
+      Number(values.inquiryDiscountValue) > 100
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["inquiryDiscountValue"],
+        message: "Percentage cannot exceed 100%.",
+      });
+    }
+  });
 type SimulatorValues = z.infer<typeof simulatorSchema>;
 
 export function PricingSimulatorPage() {
@@ -99,9 +127,11 @@ export function PricingSimulatorPage() {
       paymentMode: "PREPAID",
       actualWeightKg: 0.5,
       insuranceRequired: false,
+      inquiryDiscountType: "NONE",
     },
   });
   const paymentMode = watch("paymentMode");
+  const inquiryDiscountType = watch("inquiryDiscountType");
   const mutation = useMutation({
     mutationFn: (values: SimulatorValues) => {
       const request: QuoteRequest = {
@@ -126,6 +156,22 @@ export function PricingSimulatorPage() {
           ? { declaredValueMinor: toMinorUnits(values.declaredValue) }
           : {}),
         insuranceRequired: values.insuranceRequired,
+        ...(values.inquiryDiscountType !== "NONE"
+          ? {
+              inquiryDiscount:
+                values.inquiryDiscountType === "PERCENTAGE"
+                  ? {
+                      discountType: "PERCENTAGE" as const,
+                      percentageBp: Math.round(
+                        Number(values.inquiryDiscountValue) * 100,
+                      ),
+                    }
+                  : {
+                      discountType: "FIXED" as const,
+                      valueMinor: toMinorUnits(values.inquiryDiscountValue),
+                    },
+            }
+          : {}),
       };
       return apiRequest<Quote>("/api/v1/pricing/quote", {
         method: "POST",
@@ -304,6 +350,50 @@ export function PricingSimulatorPage() {
               />{" "}
               Insurance required
             </label>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">
+                Inquiry discount
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Optional one-off concession for this estimate. It is not saved
+                to the customer or used when booking.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Field label="Discount type" htmlFor="inquiryDiscountType">
+                  <Select
+                    id="inquiryDiscountType"
+                    {...register("inquiryDiscountType")}
+                  >
+                    <option value="NONE">No discount</option>
+                    <option value="PERCENTAGE">Percentage</option>
+                    <option value="FIXED">Fixed amount</option>
+                  </Select>
+                </Field>
+                {inquiryDiscountType !== "NONE" ? (
+                  <Field
+                    label={
+                      inquiryDiscountType === "PERCENTAGE"
+                        ? "Discount (%)"
+                        : "Discount amount (₦)"
+                    }
+                    htmlFor="inquiryDiscountValue"
+                    required
+                    error={errors.inquiryDiscountValue?.message}
+                  >
+                    <Input
+                      id="inquiryDiscountValue"
+                      inputMode="decimal"
+                      placeholder={
+                        inquiryDiscountType === "PERCENTAGE"
+                          ? "e.g. 5"
+                          : "e.g. 1000"
+                      }
+                      {...register("inquiryDiscountValue")}
+                    />
+                  </Field>
+                ) : null}
+              </div>
+            </div>
             {mutation.error ? (
               <InlineNotice tone="danger" title="Pricing unavailable">
                 {mutation.error.message}
@@ -346,7 +436,10 @@ export function QuoteView({
       <div className="flex flex-wrap items-start justify-between gap-4 border-b p-5">
         <div>
           <Badge tone="success">
-            <CheckCircle2 aria-hidden className="h-3 w-3" /> Authoritative quote
+            <CheckCircle2 aria-hidden className="h-3 w-3" />{" "}
+            {quote.inquiryDiscount
+              ? "Authoritative inquiry quote"
+              : "Authoritative quote"}
           </Badge>
           <h2 className="mt-2 text-lg font-semibold">
             {quote.rateCardCode} · Version {quote.rateCardVersion}
@@ -357,8 +450,17 @@ export function QuoteView({
           </p>
         </div>
         <div className="text-right">
+          {quote.inquiryDiscount ? (
+            <p className="text-xs text-slate-500">
+              Before discount:{" "}
+              {formatMoney(
+                quote.inquiryDiscount.originalTotalMinor,
+                quote.currency,
+              )}
+            </p>
+          ) : null}
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Final total
+            {quote.inquiryDiscount ? "Final inquiry price" : "Final total"}
           </p>
           <p className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
             {formatMoney(quote.totalMinor, quote.currency)}
@@ -384,6 +486,18 @@ export function QuoteView({
         {quote.weight?.explanation ? (
           <InlineNotice title="Why this weight was charged">
             {quote.weight.explanation}
+          </InlineNotice>
+        ) : null}
+        {quote.inquiryDiscount ? (
+          <InlineNotice title="One-off inquiry discount">
+            The server applied{" "}
+            {formatMoney(quote.inquiryDiscount.amountMinor, quote.currency)} to
+            this estimate
+            {quote.inquiryDiscount.percentageBp
+              ? ` (${quote.inquiryDiscount.percentageBp / 100}%)`
+              : ""}
+            . It does not change the customer’s rate card and will not carry
+            into a booking.
           </InlineNotice>
         ) : null}
         <div className="mt-5 overflow-hidden rounded-md border">
@@ -416,9 +530,52 @@ export function QuoteView({
               ))}
             </tbody>
             <tfoot>
+              {quote.inquiryDiscount ? (
+                <>
+                  <tr className="bg-slate-50">
+                    <td colSpan={2} className="px-4 py-2 text-sm">
+                      Price before inquiry discount
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold">
+                      {formatMoney(
+                        quote.inquiryDiscount.originalTotalMinor,
+                        quote.currency,
+                      )}
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-50 text-success">
+                    <td colSpan={2} className="px-4 py-2 text-sm">
+                      Inquiry discount
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold">
+                      −
+                      {formatMoney(
+                        quote.inquiryDiscount.amountMinor,
+                        quote.currency,
+                      )}
+                    </td>
+                  </tr>
+                  {quote.inquiryDiscount.taxReductionMinor > 0 ? (
+                    <tr className="bg-slate-50 text-success">
+                      <td colSpan={2} className="px-4 py-2 text-sm">
+                        Tax reduction from discount
+                      </td>
+                      <td className="px-4 py-2 text-right font-semibold">
+                        −
+                        {formatMoney(
+                          quote.inquiryDiscount.taxReductionMinor,
+                          quote.currency,
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                </>
+              ) : null}
               <tr className="bg-slate-50">
                 <td colSpan={2} className="px-4 py-3 text-sm font-semibold">
-                  Total charged by pricing engine
+                  {quote.inquiryDiscount
+                    ? "Final inquiry price"
+                    : "Total charged by pricing engine"}
                 </td>
                 <td className="px-4 py-3 text-right text-base font-bold">
                   {formatMoney(quote.totalMinor, quote.currency)}

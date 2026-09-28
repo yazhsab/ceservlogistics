@@ -85,6 +85,10 @@ Open **Commercial → Rate cards**, select the applicable card and open its acti
 
 A pricing administrator creates a **BUSINESS** rate card associated with that customer, adds the approved discount to a complete draft version and activates it. Booking must use that customer record. The server then selects the customer card and shows the applied discount in the price breakdown. The customs goods discount is separate and must not be used to imitate a transport discount.
 
+### Can I apply a discount to one price inquiry only
+
+Yes. Open **Commercial → Pricing simulator**, choose **Percentage** or **Fixed amount** under **Inquiry discount**, enter the approved value and calculate the price. The result shows the original price, inquiry discount, related tax reduction and final inquiry price. This concession applies only to that estimate; it is not saved to the customer and does not carry into shipment booking. Use a BUSINESS rate card when the discount should apply during booking.
+
 ### Is insurance always 1 percent
 
 No. An administrator configures insurance rules on the applicable rate-card version. The rule can use a percentage, fixed charge or per-kilogram charge with restrictions or limits. The current preview gives the actual premium. There is no automatic 1% fallback when insurance is unconfigured.
