@@ -117,6 +117,12 @@ Yes. Set **Bill transportation to** and **Bill duty and tax to** independently t
 
 No. It saves goods, valuation and payer instructions. It does not automatically file with customs, calculate or collect import duty, exchange currencies or issue an insurer's certificate. Follow the authorized customs and insurance process alongside the booking record.
 
+### How do I print or reprint the customs invoice
+
+Open **Shipments**, select the shipment and choose **Print documents**. In **Print format**, select **Customs / commercial invoice**, review the saved shipper, consignee, goods and totals, then choose **Print customs invoice**. Reopen the same shipment and repeat these steps whenever an authorized reprint is needed. The option appears only when a customs declaration was saved with the booking.
+
+The **customer copy** is a shipment receipt and the customs/commercial invoice records goods for customs valuation. Neither is the CESERV billing or tax invoice. Where finance has issued a billing invoice, retrieve it under **Finance → Billing** using the appropriate invoice permission.
+
 <!-- page -->
 ## Scanning delivery and finance questions
 

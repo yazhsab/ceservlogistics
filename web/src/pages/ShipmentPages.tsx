@@ -426,11 +426,10 @@ export function ShipmentDetailPage() {
             {shipment.status !== "CANCELLED" &&
             hasPermission("shipment.label") ? (
               <Button onClick={() => setLabelOpen(true)}>
-                <Printer aria-hidden className="h-4 w-4" /> Label
+                <Printer aria-hidden className="h-4 w-4" /> Print documents
               </Button>
             ) : null}
-            {shipment.status === "BOOKED" &&
-            hasPermission("shipment.edit") ? (
+            {shipment.status === "BOOKED" && hasPermission("shipment.edit") ? (
               <Button onClick={() => setEditOpen(true)}>
                 <Pencil aria-hidden className="h-4 w-4" /> Edit
               </Button>
@@ -485,7 +484,7 @@ export function ShipmentDetailPage() {
       <LabelDialog
         open={labelOpen}
         onOpenChange={setLabelOpen}
-        shipmentId={shipmentId}
+        shipment={shipment}
       />
     </>
   );
@@ -1329,7 +1328,9 @@ function EditShipmentDialog({
           <Button
             variant="primary"
             loading={mutation.isPending}
-            onClick={() => void form.handleSubmit((values) => mutation.mutate(values))()}
+            onClick={() =>
+              void form.handleSubmit((values) => mutation.mutate(values))()
+            }
           >
             Save correction
           </Button>
@@ -1584,15 +1585,17 @@ function CancelDialog({
 function LabelDialog({
   open,
   onOpenChange,
-  shipmentId,
+  shipment,
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
-  shipmentId: string;
+  shipment: Shipment;
 }) {
-  const [printFormat, setPrintFormat] = useState<"STICKER" | "COURIER_SHEET">(
-    "STICKER",
-  );
+  const shipmentId = shipment.id ?? "";
+  const hasCustomsInvoice = Boolean(shipment.commercial?.customs);
+  const [printFormat, setPrintFormat] = useState<
+    "STICKER" | "COURIER_SHEET" | "CUSTOMS_INVOICE"
+  >("STICKER");
   const query = useQuery({
     queryKey: ["shipment-label", shipmentId],
     queryFn: () =>
@@ -1614,8 +1617,8 @@ function LabelDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Shipment label"
-      description="Print one scannable label per package as a 4 × 6 sticker or an A4 courier sheet with a customer copy."
+      title="Shipment documents"
+      description="Print package labels, a customer copy, or the saved customs invoice for this shipment."
       footer={
         <>
           <Select
@@ -1630,29 +1633,56 @@ function LabelDialog({
             <option value="COURIER_SHEET">
               A4 courier sheet + customer copy
             </option>
+            {hasCustomsInvoice ? (
+              <option value="CUSTOMS_INVOICE">
+                Customs / commercial invoice
+              </option>
+            ) : null}
           </Select>
-          <Button onClick={() => void downloadZpl()} disabled={!query.data}>
-            <Download aria-hidden className="h-4 w-4" /> Download ZPL
-          </Button>
+          {printFormat !== "CUSTOMS_INVOICE" ? (
+            <Button onClick={() => void downloadZpl()} disabled={!query.data}>
+              <Download aria-hidden className="h-4 w-4" /> Download ZPL
+            </Button>
+          ) : null}
           <Button
             variant="primary"
             onClick={() => window.print()}
-            disabled={!query.data}
+            disabled={
+              printFormat === "CUSTOMS_INVOICE"
+                ? !hasCustomsInvoice
+                : !query.data
+            }
           >
             <Printer aria-hidden className="h-4 w-4" />
-            {printFormat === "COURIER_SHEET"
-              ? "Print labels & customer copy"
-              : "Print all pieces"}
+            {printFormat === "CUSTOMS_INVOICE"
+              ? "Print customs invoice"
+              : printFormat === "COURIER_SHEET"
+                ? "Print labels & customer copy"
+                : "Print all pieces"}
           </Button>
         </>
       }
     >
-      {query.isLoading ? (
+      {printFormat === "CUSTOMS_INVOICE" && shipment.commercial?.customs ? (
+        <CommercialInvoice shipment={shipment} />
+      ) : query.isLoading ? (
         <LoadingState label="Generating label" />
       ) : query.error ? (
         <ErrorState error={query.error} retry={() => void query.refetch()} />
       ) : query.data ? (
-        <ShippingLabel label={query.data} printFormat={printFormat} />
+        <ShippingLabel
+          label={query.data}
+          printFormat={
+            printFormat === "COURIER_SHEET" ? "COURIER_SHEET" : "STICKER"
+          }
+        />
+      ) : null}
+      {!hasCustomsInvoice ? (
+        <p className="no-print mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          This shipment has no saved customs declaration, so a customs invoice
+          cannot be generated for it. Labels and the customer copy remain
+          available.
+        </p>
       ) : null}
     </Dialog>
   );
@@ -1682,6 +1712,238 @@ function ShippingLabel({
       ))}
       {printFormat === "COURIER_SHEET" ? (
         <CustomerShipmentCopy label={label} />
+      ) : null}
+    </div>
+  );
+}
+
+function CommercialInvoice({ shipment }: { shipment: Shipment }) {
+  const commercial = shipment.commercial;
+  const customs = commercial?.customs;
+  if (!commercial || !customs) return null;
+  const declaration = customs.declaration;
+  const currency = declaration.currency || shipment.currency;
+  const sender = shipment.addresses?.sender;
+  const recipient = shipment.addresses?.recipient;
+  const invoiceReference = declaration.invoiceNumber || shipment.awb || "—";
+  const totals = [
+    ["Goods subtotal", customs.goodsSubtotalMinor],
+    ["Goods discount", -1 * (declaration.discountMinor ?? 0)],
+    ["Declared goods value", customs.declaredValueMinor],
+    ["Freight", declaration.freightMinor ?? 0],
+    [
+      insuranceRateLabel(commercial.insurance.quote)
+        ? `Insurance (${insuranceRateLabel(commercial.insurance.quote)})`
+        : "Insurance",
+      customs.insuranceMinor,
+    ],
+    ["Other charges", declaration.otherChargesMinor ?? 0],
+  ] as const;
+
+  return (
+    <div className="commercial-invoice-print-sheet">
+      <article
+        aria-label="Customs commercial invoice"
+        className="commercial-invoice-page mx-auto w-full max-w-[800px] bg-white p-6 text-slate-950"
+      >
+        <div className="flex items-start justify-between border-b-2 border-slate-950 pb-4">
+          <div>
+            <strong className="text-2xl tracking-wide">CESERV</strong>
+            <p className="text-[10px] uppercase tracking-[0.24em]">Courier</p>
+          </div>
+          <div className="text-right">
+            <h2 className="text-xl font-black uppercase">
+              Customs / Commercial Invoice
+            </h2>
+            <p className="mt-1 text-xs">
+              Invoice reference: {invoiceReference}
+            </p>
+          </div>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-8 gap-y-2 border-b py-4 text-xs sm:grid-cols-4">
+          <InvoiceValue label="AWB" value={shipment.awb || "—"} />
+          <InvoiceValue
+            label="Booked"
+            value={formatDateTime(shipment.bookedAt)}
+          />
+          <InvoiceValue
+            label="Customer"
+            value={
+              [shipment.customer?.code, shipment.customer?.name]
+                .filter(Boolean)
+                .join(" · ") || "—"
+            }
+          />
+          <InvoiceValue
+            label="Service"
+            value={
+              [shipment.service?.code, shipment.service?.name]
+                .filter(Boolean)
+                .join(" · ") || "—"
+            }
+          />
+          <InvoiceValue
+            label="Reason for export"
+            value={declaration.reasonForExport}
+          />
+          <InvoiceValue
+            label="Terms of sale"
+            value={declaration.termsOfSale || "—"}
+          />
+          <InvoiceValue
+            label="Bill transportation to"
+            value={titleCase(commercial.billing.transportation.party)}
+          />
+          <InvoiceValue
+            label="Bill duty and tax to"
+            value={titleCase(commercial.billing.dutyTax.party)}
+          />
+        </dl>
+
+        <section className="grid grid-cols-2 gap-8 border-b py-4 text-xs leading-5">
+          <CommercialInvoiceAddress title="Shipper / sender" address={sender} />
+          <CommercialInvoiceAddress
+            title="Consignee / recipient"
+            address={recipient}
+          />
+        </section>
+
+        <div className="overflow-hidden border-b py-4">
+          <table className="w-full table-fixed text-left text-xs">
+            <caption className="mb-2 text-left text-sm font-bold uppercase">
+              Declared goods
+            </caption>
+            <thead>
+              <tr className="border-y bg-slate-100">
+                <th className="w-8 px-2 py-2">#</th>
+                <th className="px-2 py-2">Description</th>
+                <th className="w-24 px-2 py-2">HS code</th>
+                <th className="w-20 px-2 py-2">Origin</th>
+                <th className="w-20 px-2 py-2 text-right">Qty</th>
+                <th className="w-28 px-2 py-2 text-right">Unit value</th>
+                <th className="w-28 px-2 py-2 text-right">Line total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {declaration.items.map((item, index) => (
+                <tr
+                  className="border-b align-top"
+                  key={`${item.description}-${index}`}
+                >
+                  <td className="px-2 py-2">{index + 1}</td>
+                  <td className="break-words px-2 py-2">{item.description}</td>
+                  <td className="break-words px-2 py-2">
+                    {item.hsCode || "—"}
+                  </td>
+                  <td className="break-words px-2 py-2">
+                    {item.countryOfOrigin}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {item.quantity} {item.unitOfMeasure}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    {formatMoney(item.unitValueMinor, currency)}
+                  </td>
+                  <td className="px-2 py-2 text-right font-semibold">
+                    {formatMoney(customs.lineTotalsMinor[index], currency)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="grid gap-6 py-4 sm:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="text-xs leading-5">
+            <strong className="block uppercase">Declaration statement</strong>
+            <p className="mt-1 whitespace-pre-wrap">
+              {declaration.declarationStatement ||
+                "The information on this invoice is true and correct."}
+            </p>
+            <p className="mt-4 border-t pt-2 text-[10px] text-slate-600">
+              Generated from the shipment record. This document states the
+              customs valuation and is not a CESERV tax invoice or proof that
+              customs duty has been assessed or paid.
+            </p>
+          </div>
+          <dl className="divide-y border text-xs">
+            {totals.map(([label, value]) => (
+              <div className="flex justify-between gap-4 px-3 py-2" key={label}>
+                <dt>{label}</dt>
+                <dd className="shrink-0 font-semibold">
+                  {formatMoney(value, currency)}
+                </dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-4 bg-slate-100 px-3 py-3 text-sm font-black">
+              <dt>Customs invoice total</dt>
+              <dd className="shrink-0">
+                {formatMoney(customs.invoiceTotalMinor, currency)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function InvoiceValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[9px] uppercase text-slate-600">{label}</dt>
+      <dd className="break-words font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function CommercialInvoiceAddress({
+  title,
+  address,
+}: {
+  title: string;
+  address?: Record<string, unknown>;
+}) {
+  return (
+    <div className="min-w-0">
+      <strong className="block text-[10px] uppercase">{title}</strong>
+      <span className="font-semibold">
+        {string(address, "contactName", "name") || "—"}
+      </span>
+      {string(address, "companyName", "company") ? (
+        <>
+          <br />
+          <span>{string(address, "companyName", "company")}</span>
+        </>
+      ) : null}
+      <br />
+      <span>{string(address, "line1") || "—"}</span>
+      {string(address, "line2") ? (
+        <>
+          <br />
+          <span>{string(address, "line2")}</span>
+        </>
+      ) : null}
+      <br />
+      <span>
+        {[
+          string(address, "city"),
+          string(address, "state"),
+          string(address, "pincode"),
+        ]
+          .filter(Boolean)
+          .join(", ")}
+      </span>
+      <br />
+      <span>Country: {string(address, "countryCode") || "—"}</span>
+      <br />
+      <span>{string(address, "phone")}</span>
+      {string(address, "email") ? (
+        <>
+          <br />
+          <span>{string(address, "email")}</span>
+        </>
       ) : null}
     </div>
   );

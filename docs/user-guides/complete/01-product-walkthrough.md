@@ -210,7 +210,7 @@ Open **My profile** to review your identity, organization, access scope and acti
 3. Check declared value, COD amount, both billing parties, customs values and insurance where applicable. Obtain acceptance of the current insurance premium if insurance is requested.
 4. If you edit any input, use **Refresh shipment preview** or **Refresh preview**. Review the updated result and insurance acceptance again.
 5. Select **Confirm & book** once and wait for the result. The success screen provides the **AWB**, the shipment reference used for labels and tracking.
-6. Use the label action when available, check the printed AWB against the shipment, and attach the label to the correct parcel. Use **View Shipment** to inspect the saved record or start a new booking.
+6. Use **Print documents** when available. Print the package labels and customer copy, or select **Customs / commercial invoice** when the booked shipment includes customs information. Check the printed AWB against the shipment and attach the label to the correct parcel. Use **View Shipment** to inspect the saved record or start a new booking.
 
 **Keyboard shortcut:** Ctrl+Enter on Windows, or Command+Enter on Mac, requests a preview and can submit a booking when a current preview is already present. Use it only after the same final checks as the booking button.
 
@@ -239,7 +239,7 @@ The current customer portal does not provide self-service booking or address mai
 
 ### Print the correct label
 
-Use **Label** on the shipment detail where permitted. Select **4 × 6 sticker labels** for the parcels, **A4 courier sheet + customer copy** for a printable customer record, or download ZPL for a compatible label printer. The customer copy includes the AWB, sender and recipient, package details, declared value and the final server-calculated shipment charge. It is a shipment record, not a tax invoice. Check one printed label for legibility and scan it in an appropriate verification process before a batch.
+Use **Print documents** on the shipment detail where permitted. Select **4 × 6 sticker labels** for the parcels, **A4 courier sheet + customer copy** for a printable customer record, **Customs / commercial invoice** for the saved customs declaration and valuation, or download ZPL for a compatible label printer. The customs option appears only when customs data was recorded at booking. The customer copy includes the AWB, sender and recipient, package details, declared value and the final server-calculated shipment charge. It is a shipment record, not a tax invoice. The customs document is also distinct from a billing invoice issued by Finance. Check one printed label for legibility and scan it in an appropriate verification process before a batch.
 
 ![Shipment label with a long routing code contained inside its routing box](../screenshots/shipment-label-routing-code.png)
 

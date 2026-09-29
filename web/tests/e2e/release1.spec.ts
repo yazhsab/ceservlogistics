@@ -174,15 +174,19 @@ test("booking is keyboard-friendly and duplicate submission is blocked", async (
   await expect(page.getByRole("heading", { name: shipment.awb })).toBeVisible();
 });
 
-test("shipment search, detail, label, and cancellation", async ({ page }) => {
+test("shipment search, printable documents, and cancellation", async ({
+  page,
+}) => {
   await login(page);
   await page
     .getByPlaceholder("Search AWB, reference, recipient")
     .fill(shipment.awb);
   await page.getByRole("link", { name: shipment.awb }).click();
   await expect(page.getByRole("heading", { name: shipment.awb })).toBeVisible();
-  await page.getByRole("button", { name: "Label" }).click();
-  const labelDialog = page.getByRole("dialog", { name: "Shipment label" });
+  await page.getByRole("button", { name: "Print documents" }).click();
+  const labelDialog = page.getByRole("dialog", {
+    name: "Shipment documents",
+  });
   await expect(labelDialog.getByText("Routing code")).toBeVisible();
   await expect(labelDialog.getByText("CESERV", { exact: true })).toBeVisible();
   const routingCode = labelDialog.getByTestId("routing-code");
@@ -222,6 +226,30 @@ test("shipment search, detail, label, and cancellation", async ({ page }) => {
         panel.scrollHeight <= panel.clientHeight + 1,
     ),
   ).toBe(true);
+  await page.emulateMedia({ media: "screen" });
+  await labelDialog.getByLabel("Print format").selectOption("CUSTOMS_INVOICE");
+  const customsInvoice = labelDialog.getByRole("article", {
+    name: "Customs commercial invoice",
+  });
+  await expect(customsInvoice).toContainText("CI-WEB-001");
+  await expect(customsInvoice).toContainText("Cotton garments");
+  await expect(customsInvoice).toContainText("₦101,990.00");
+  await expect(
+    page.getByRole("button", { name: "Print customs invoice" }),
+  ).toBeVisible();
+  await page.emulateMedia({ media: "print" });
+  await expect(
+    customsInvoice.getByRole("heading", {
+      name: "Customs / Commercial Invoice",
+    }),
+  ).toBeVisible();
+  const invoiceMetrics = await customsInvoice.evaluate((invoice) => ({
+    clientWidth: invoice.clientWidth,
+    scrollWidth: invoice.scrollWidth,
+  }));
+  expect(invoiceMetrics.scrollWidth).toBeLessThanOrEqual(
+    invoiceMetrics.clientWidth + 1,
+  );
   await page.emulateMedia({ media: "screen" });
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Cancel" }).click();

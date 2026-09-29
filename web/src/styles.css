@@ -130,4 +130,11 @@ button:disabled {
     break-after: page;
     page-break-after: always;
   }
+  .commercial-invoice-print-sheet .commercial-invoice-page {
+    width: 190mm !important;
+    min-height: 277mm !important;
+    max-width: none !important;
+    padding: 8mm !important;
+    box-shadow: none !important;
+  }
 }
