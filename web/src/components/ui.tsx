@@ -741,6 +741,7 @@ export function Dialog({
   description,
   children,
   footer,
+  size = "default",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -748,12 +749,20 @@ export function Dialog({
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
+  size?: "default" | "wide";
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-slate-950/45 data-[state=open]:animate-in" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[min(620px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-overlay focus:outline-none">
+        <DialogPrimitive.Content
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-overlay focus:outline-none",
+            size === "wide"
+              ? "w-[min(960px,calc(100%-2rem))]"
+              : "w-[min(620px,calc(100%-2rem))]",
+          )}
+        >
           <div className="shrink-0 border-b border-border px-5 py-4">
             <DialogPrimitive.Title className="text-base font-semibold text-slate-950">
               {title}

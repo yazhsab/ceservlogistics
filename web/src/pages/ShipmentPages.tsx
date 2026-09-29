@@ -1619,6 +1619,7 @@ function LabelDialog({
       onOpenChange={onOpenChange}
       title="Shipment documents"
       description="Print package labels, a customer copy, or the saved customs invoice for this shipment."
+      size="wide"
       footer={
         <>
           <Select
@@ -1809,8 +1810,8 @@ function CommercialInvoice({ shipment }: { shipment: Shipment }) {
           />
         </section>
 
-        <div className="overflow-hidden border-b py-4">
-          <table className="w-full table-fixed text-left text-xs">
+        <div className="overflow-x-auto border-b py-4 print:overflow-visible">
+          <table className="w-full min-w-[720px] table-fixed text-left text-xs print:min-w-0">
             <caption className="mb-2 text-left text-sm font-bold uppercase">
               Declared goods
             </caption>
