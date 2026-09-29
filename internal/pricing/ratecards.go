@@ -107,12 +107,19 @@ func (h *Handler) listRateCards(w http.ResponseWriter, r *http.Request) error {
 	items := make([]map[string]any, 0, len(rows))
 	for _, c := range rows {
 		total = c.TotalCount
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"id": c.PublicID, "code": c.Code, "name": c.Name, "scope": c.Scope,
 			"currency": c.Currency, "isDefault": c.IsDefault, "status": c.Status,
-			"customerCode": c.CustomerCode, "franchiseCode": c.FranchiseCode,
-			"latestVersion": c.LatestVersion, "activeVersion": c.ActiveVersion,
-		})
+			"customerCode": c.CustomerCode, "customerName": c.CustomerName,
+			"franchiseCode": c.FranchiseCode, "franchiseName": c.FranchiseName,
+		}
+		if c.LatestVersion > 0 {
+			item["latestVersion"] = c.LatestVersion
+		}
+		if c.ActiveVersion > 0 {
+			item["activeVersion"] = c.ActiveVersion
+		}
+		items = append(items, item)
 	}
 	return httpx.OK(w, pagination.NewOffsetPage(items, page, limit, total, "code", "asc"))
 }

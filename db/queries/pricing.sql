@@ -20,8 +20,8 @@ SELECT * FROM rate_cards WHERE id = $1 AND organization_id = $2;
 -- name: ListRateCards :many
 SELECT rc.*, c.code AS customer_code, c.name AS customer_name,
        f.code AS franchise_code, f.name AS franchise_name,
-       (SELECT max(v.version) FROM rate_card_versions v WHERE v.rate_card_id = rc.id) AS latest_version,
-       (SELECT v.version FROM rate_card_versions v WHERE v.rate_card_id = rc.id AND v.status = 'ACTIVE') AS active_version,
+       COALESCE((SELECT max(v.version) FROM rate_card_versions v WHERE v.rate_card_id = rc.id), 0)::int4 AS latest_version,
+       COALESCE((SELECT v.version FROM rate_card_versions v WHERE v.rate_card_id = rc.id AND v.status = 'ACTIVE'), 0)::int4 AS active_version,
        count(*) OVER () AS total_count
 FROM rate_cards rc
 LEFT JOIN customers c ON c.id = rc.customer_id

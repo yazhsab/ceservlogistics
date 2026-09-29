@@ -11,6 +11,47 @@ import (
 	"github.com/ceserve/courier-os/tests/harness"
 )
 
+// TestDraftBusinessRateCardAppearsInList protects the workflow where an
+// administrator creates a customer-specific card before adding its first
+// version. The list must keep working while the card has no latest or active
+// version, and it must identify the associated business customer.
+func TestDraftBusinessRateCardAppearsInList(t *testing.T) {
+	env := harness.Start(t)
+	env.Reset(t)
+	geo := env.Geography(t)
+	tn := env.NewTenant(t, geo, harness.TenantOptions{Code: "DRAFTCARD"})
+
+	created := env.Do(t, "POST", "/api/v1/rate-cards", tn.AdminAccessTok, map[string]any{
+		"code": "BUSINESS-DRAFT", "name": "Business Draft Tariff", "scope": "BUSINESS",
+		"customerId": tn.CustomerPublicID,
+	})
+	if created.Status != http.StatusCreated {
+		t.Fatalf("create draft business card failed: %d %s", created.Status, created.Raw)
+	}
+
+	listed := env.Do(t, "GET", "/api/v1/rate-cards", tn.AdminAccessTok, nil)
+	if listed.Status != http.StatusOK {
+		t.Fatalf("list rate cards with draft-only card failed: %d %s", listed.Status, listed.Raw)
+	}
+	for _, raw := range listed.Body["data"].([]any) {
+		card := raw.(map[string]any)
+		if card["code"] != "BUSINESS-DRAFT" {
+			continue
+		}
+		if got := card["customerName"]; got != "Walk-in Customer" {
+			t.Fatalf("customerName = %v, want Walk-in Customer", got)
+		}
+		if _, exists := card["activeVersion"]; exists {
+			t.Fatalf("draft-only card unexpectedly has activeVersion: %v", card["activeVersion"])
+		}
+		if _, exists := card["latestVersion"]; exists {
+			t.Fatalf("card without versions unexpectedly has latestVersion: %v", card["latestVersion"])
+		}
+		return
+	}
+	t.Fatalf("draft business card missing from list response: %s", listed.Raw)
+}
+
 // TestQuoteBreakdownIsFullyExplained asserts the line-by-line contract that the
 // frontend renders and that a dispute would be argued from.
 func TestQuoteBreakdownIsFullyExplained(t *testing.T) {
