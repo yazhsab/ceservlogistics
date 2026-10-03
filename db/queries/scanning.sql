@@ -4,8 +4,7 @@
 -- The scanner's hot path: turn a barcode into the shipment plus everything the
 -- custody check needs, in one round trip.
 --
--- A barcode is either an AWB or a per-piece barcode. Both are UNIQUE, so the
--- lookup is two index probes at worst and returns at most one row.
+-- A barcode is an AWB, manual paper-waybill number or per-piece barcode.
 SELECT s.id, s.public_id, s.awb, s.organization_id, s.current_status, s.movement_direction,
        s.current_custody_unit_id, s.current_custody_user_id, s.current_bag_id, s.current_trip_id,
        s.origin_branch_id, s.origin_hub_id, s.destination_hub_id, s.destination_branch_id,
@@ -17,7 +16,8 @@ FROM shipments s
 LEFT JOIN shipment_packages p
        ON p.piece_barcode = sqlc.arg('barcode') AND p.shipment_id = s.id
 WHERE s.organization_id = sqlc.arg('organization_id')
-  AND (s.awb = sqlc.arg('barcode')
+  AND (s.awb = upper(sqlc.arg('barcode'))
+       OR upper(s.manual_waybill_number) = upper(sqlc.arg('barcode'))
        OR s.id = (SELECT shipment_id FROM shipment_packages
                    WHERE piece_barcode = sqlc.arg('barcode') LIMIT 1));
 

@@ -27,6 +27,7 @@ export type ShipmentListItem = components["schemas"]["ShipmentListItem"];
 export type ShipmentEvent = components["schemas"]["ShipmentEvent"];
 export type Label = components["schemas"]["Label"];
 export type BookingRequest = components["schemas"]["BookingRequest"];
+export type BookingPreview = components["schemas"]["BookingPreview"];
 export type ShipmentCorrectionRequest =
   components["schemas"]["ShipmentCorrectionRequest"];
 export type RateCardVersion = components["schemas"]["RateCardVersion"];

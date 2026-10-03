@@ -14,6 +14,7 @@ export default tseslint.config(
       "eslint.config.js",
       "postcss.config.js",
       "tests/visual/*.mjs",
+      "public/sw.js",
     ],
   },
   js.configs.recommended,

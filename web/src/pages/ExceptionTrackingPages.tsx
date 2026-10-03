@@ -1672,7 +1672,7 @@ export function PublicTrackingPage() {
             See where your parcel is, without the warehouse jargon.
           </h1>
           <p className="mt-3 max-w-xl text-sm text-emerald-50/75">
-            Enter the AWB printed on your receipt or shipping label.
+            Enter the CESERV AWB or the manual waybill number recorded at booking.
           </p>
           <form onSubmit={submit} className="mt-7 flex max-w-2xl gap-2">
             <Input
@@ -1704,7 +1704,7 @@ export function PublicTrackingPage() {
               <EmptyState
                 icon={Search}
                 title="Tracking information not found"
-                description="Check the AWB and try again. For privacy, unavailable and unrecognized numbers receive the same response."
+                description="Check the CESERV or manual waybill number and try again. For privacy, unavailable and unrecognized numbers receive the same response."
                 action={
                   <Button
                     onClick={() => {

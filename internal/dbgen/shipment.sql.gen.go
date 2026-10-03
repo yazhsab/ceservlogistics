@@ -162,7 +162,7 @@ SET current_status = $1,
 WHERE id = $6
   AND organization_id = $7
   AND current_status = $8
-RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason
+RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number
 `
 
 type ApplyShipmentTransitionParams struct {
@@ -252,6 +252,7 @@ func (q *Queries) ApplyShipmentTransition(ctx context.Context, arg ApplyShipment
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
@@ -527,7 +528,7 @@ func (q *Queries) CreateRouteSnapshot(ctx context.Context, arg CreateRouteSnapsh
 const createShipment = `-- name: CreateShipment :one
 
 INSERT INTO shipments (
-    public_id, organization_id, awb, reference_number, customer_id, courier_service_id,
+    public_id, organization_id, awb, reference_number, manual_waybill_number, customer_id, courier_service_id,
     booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at,
     event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id,
     route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination,
@@ -536,10 +537,10 @@ INSERT INTO shipments (
     total_amount_minor, sla_hours, promised_delivery_at, booked_at,
     content_description, special_instructions, is_fragile, is_dangerous_goods, metadata
 ) VALUES (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,'BOOKED',now(),1,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-    $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'BOOKED',now(),1,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+    $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
 )
-RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason
+RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number
 `
 
 type CreateShipmentParams struct {
@@ -547,6 +548,7 @@ type CreateShipmentParams struct {
 	OrganizationID        int64
 	Awb                   string
 	ReferenceNumber       *string
+	ManualWaybillNumber   *string
 	CustomerID            int64
 	CourierServiceID      int64
 	BookedByUserID        *int64
@@ -590,6 +592,7 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		arg.OrganizationID,
 		arg.Awb,
 		arg.ReferenceNumber,
+		arg.ManualWaybillNumber,
 		arg.CustomerID,
 		arg.CourierServiceID,
 		arg.BookedByUserID,
@@ -682,6 +685,7 @@ func (q *Queries) CreateShipment(ctx context.Context, arg CreateShipmentParams) 
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
@@ -752,7 +756,7 @@ func (q *Queries) CreateShipmentPackage(ctx context.Context, arg CreateShipmentP
 }
 
 const getShipmentByAWB = `-- name: GetShipmentByAWB :one
-SELECT s.id, s.public_id, s.organization_id, s.awb, s.reference_number, s.customer_id, s.courier_service_id, s.booked_by_user_id, s.booking_unit_id, s.payment_mode, s.current_status, s.status_changed_at, s.event_sequence, s.origin_branch_id, s.origin_hub_id, s.destination_hub_id, s.destination_branch_id, s.route_definition_id, s.origin_pincode, s.destination_pincode, s.is_remote_origin, s.is_remote_destination, s.current_custody_unit_id, s.current_custody_user_id, s.piece_count, s.actual_weight_grams, s.volumetric_weight_grams, s.chargeable_weight_grams, s.currency, s.declared_value_minor, s.cod_amount_minor, s.insurance_required, s.total_amount_minor, s.sla_hours, s.promised_delivery_at, s.booked_at, s.content_description, s.special_instructions, s.is_fragile, s.is_dangerous_goods, s.cancelled_at, s.cancelled_by, s.cancellation_reason, s.metadata, s.created_at, s.updated_at, s.version, s.current_bag_id, s.current_trip_id, s.movement_direction, s.delivery_attempt_count, s.pickup_attempt_count, s.first_ofd_at, s.delivered_at, s.picked_up_at, s.is_held, s.hold_reason FROM shipments s
+SELECT s.id, s.public_id, s.organization_id, s.awb, s.reference_number, s.customer_id, s.courier_service_id, s.booked_by_user_id, s.booking_unit_id, s.payment_mode, s.current_status, s.status_changed_at, s.event_sequence, s.origin_branch_id, s.origin_hub_id, s.destination_hub_id, s.destination_branch_id, s.route_definition_id, s.origin_pincode, s.destination_pincode, s.is_remote_origin, s.is_remote_destination, s.current_custody_unit_id, s.current_custody_user_id, s.piece_count, s.actual_weight_grams, s.volumetric_weight_grams, s.chargeable_weight_grams, s.currency, s.declared_value_minor, s.cod_amount_minor, s.insurance_required, s.total_amount_minor, s.sla_hours, s.promised_delivery_at, s.booked_at, s.content_description, s.special_instructions, s.is_fragile, s.is_dangerous_goods, s.cancelled_at, s.cancelled_by, s.cancellation_reason, s.metadata, s.created_at, s.updated_at, s.version, s.current_bag_id, s.current_trip_id, s.movement_direction, s.delivery_attempt_count, s.pickup_attempt_count, s.first_ofd_at, s.delivered_at, s.picked_up_at, s.is_held, s.hold_reason, s.manual_waybill_number FROM shipments s
 WHERE s.awb = $1 AND s.organization_id = $2
 `
 
@@ -822,12 +826,13 @@ func (q *Queries) GetShipmentByAWB(ctx context.Context, arg GetShipmentByAWBPara
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
 
 const getShipmentByID = `-- name: GetShipmentByID :one
-SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason FROM shipments WHERE organization_id = $1 AND id = $2
+SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number FROM shipments WHERE organization_id = $1 AND id = $2
 `
 
 type GetShipmentByIDParams struct {
@@ -899,12 +904,13 @@ func (q *Queries) GetShipmentByID(ctx context.Context, arg GetShipmentByIDParams
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
 
 const getShipmentByPublicID = `-- name: GetShipmentByPublicID :one
-SELECT s.id, s.public_id, s.organization_id, s.awb, s.reference_number, s.customer_id, s.courier_service_id, s.booked_by_user_id, s.booking_unit_id, s.payment_mode, s.current_status, s.status_changed_at, s.event_sequence, s.origin_branch_id, s.origin_hub_id, s.destination_hub_id, s.destination_branch_id, s.route_definition_id, s.origin_pincode, s.destination_pincode, s.is_remote_origin, s.is_remote_destination, s.current_custody_unit_id, s.current_custody_user_id, s.piece_count, s.actual_weight_grams, s.volumetric_weight_grams, s.chargeable_weight_grams, s.currency, s.declared_value_minor, s.cod_amount_minor, s.insurance_required, s.total_amount_minor, s.sla_hours, s.promised_delivery_at, s.booked_at, s.content_description, s.special_instructions, s.is_fragile, s.is_dangerous_goods, s.cancelled_at, s.cancelled_by, s.cancellation_reason, s.metadata, s.created_at, s.updated_at, s.version, s.current_bag_id, s.current_trip_id, s.movement_direction, s.delivery_attempt_count, s.pickup_attempt_count, s.first_ofd_at, s.delivered_at, s.picked_up_at, s.is_held, s.hold_reason,
+SELECT s.id, s.public_id, s.organization_id, s.awb, s.reference_number, s.customer_id, s.courier_service_id, s.booked_by_user_id, s.booking_unit_id, s.payment_mode, s.current_status, s.status_changed_at, s.event_sequence, s.origin_branch_id, s.origin_hub_id, s.destination_hub_id, s.destination_branch_id, s.route_definition_id, s.origin_pincode, s.destination_pincode, s.is_remote_origin, s.is_remote_destination, s.current_custody_unit_id, s.current_custody_user_id, s.piece_count, s.actual_weight_grams, s.volumetric_weight_grams, s.chargeable_weight_grams, s.currency, s.declared_value_minor, s.cod_amount_minor, s.insurance_required, s.total_amount_minor, s.sla_hours, s.promised_delivery_at, s.booked_at, s.content_description, s.special_instructions, s.is_fragile, s.is_dangerous_goods, s.cancelled_at, s.cancelled_by, s.cancellation_reason, s.metadata, s.created_at, s.updated_at, s.version, s.current_bag_id, s.current_trip_id, s.movement_direction, s.delivery_attempt_count, s.pickup_attempt_count, s.first_ofd_at, s.delivered_at, s.picked_up_at, s.is_held, s.hold_reason, s.manual_waybill_number,
        c.public_id AS customer_public_id, c.code AS customer_code, c.name AS customer_name,
        c.customer_type,
        sv.public_id AS service_public_id, sv.code AS service_code, sv.name AS service_name, sv.mode AS service_mode,
@@ -988,6 +994,7 @@ type GetShipmentByPublicIDRow struct {
 	PickedUpAt                *time.Time
 	IsHeld                    bool
 	HoldReason                *string
+	ManualWaybillNumber       *string
 	CustomerPublicID          string
 	CustomerCode              string
 	CustomerName              string
@@ -1071,6 +1078,7 @@ func (q *Queries) GetShipmentByPublicID(ctx context.Context, arg GetShipmentByPu
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 		&i.CustomerPublicID,
 		&i.CustomerCode,
 		&i.CustomerName,
@@ -1130,7 +1138,7 @@ func (q *Queries) GetShipmentChargeSnapshot(ctx context.Context, shipmentID int6
 }
 
 const getShipmentLabelData = `-- name: GetShipmentLabelData :one
-SELECT s.public_id, s.awb, s.reference_number, s.current_status, s.payment_mode,
+SELECT s.public_id, s.awb, s.reference_number, s.manual_waybill_number, s.current_status, s.payment_mode,
        s.piece_count, s.actual_weight_grams, s.chargeable_weight_grams, s.currency,
        s.cod_amount_minor, s.declared_value_minor, s.total_amount_minor,
        s.origin_pincode, s.destination_pincode, s.booked_at, s.promised_delivery_at,
@@ -1190,6 +1198,7 @@ type GetShipmentLabelDataRow struct {
 	PublicID                   string
 	Awb                        string
 	ReferenceNumber            *string
+	ManualWaybillNumber        *string
 	CurrentStatus              string
 	PaymentMode                string
 	PieceCount                 int32
@@ -1258,6 +1267,7 @@ func (q *Queries) GetShipmentLabelData(ctx context.Context, arg GetShipmentLabel
 		&i.PublicID,
 		&i.Awb,
 		&i.ReferenceNumber,
+		&i.ManualWaybillNumber,
 		&i.CurrentStatus,
 		&i.PaymentMode,
 		&i.PieceCount,
@@ -1535,7 +1545,7 @@ func (q *Queries) ListShipmentPackages(ctx context.Context, shipmentID int64) ([
 }
 
 const listShipments = `-- name: ListShipments :many
-SELECT s.id, s.public_id, s.awb, s.reference_number, s.current_status, s.status_changed_at,
+SELECT s.id, s.public_id, s.awb, s.reference_number, s.manual_waybill_number, s.current_status, s.status_changed_at,
        s.payment_mode, s.piece_count, s.chargeable_weight_grams, s.currency,
        s.total_amount_minor, s.cod_amount_minor, s.origin_pincode, s.destination_pincode,
        s.promised_delivery_at, s.booked_at, s.created_at,
@@ -1567,7 +1577,8 @@ WHERE s.organization_id = $1
   AND ($9::text IS NULL OR s.destination_pincode = $9)
   AND ($10::text IS NULL
        OR s.awb LIKE upper($10) || '%'
-       OR s.reference_number = $10)
+       OR s.reference_number = $10
+       OR upper(s.manual_waybill_number) = upper($10))
   AND ($11::bigint[] IS NULL
        OR s.origin_branch_id = ANY($11::bigint[])
        OR s.destination_branch_id = ANY($11::bigint[])
@@ -1602,6 +1613,7 @@ type ListShipmentsRow struct {
 	PublicID              string
 	Awb                   string
 	ReferenceNumber       *string
+	ManualWaybillNumber   *string
 	CurrentStatus         string
 	StatusChangedAt       time.Time
 	PaymentMode           string
@@ -1661,6 +1673,7 @@ func (q *Queries) ListShipments(ctx context.Context, arg ListShipmentsParams) ([
 			&i.PublicID,
 			&i.Awb,
 			&i.ReferenceNumber,
+			&i.ManualWaybillNumber,
 			&i.CurrentStatus,
 			&i.StatusChangedAt,
 			&i.PaymentMode,
@@ -1695,7 +1708,7 @@ func (q *Queries) ListShipments(ctx context.Context, arg ListShipmentsParams) ([
 }
 
 const lockShipmentForUpdate = `-- name: LockShipmentForUpdate :one
-SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason FROM shipments
+SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number FROM shipments
 WHERE public_id = $1 AND organization_id = $2
 FOR UPDATE
 `
@@ -1768,6 +1781,7 @@ func (q *Queries) LockShipmentForUpdate(ctx context.Context, arg LockShipmentFor
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }

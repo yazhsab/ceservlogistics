@@ -72,10 +72,13 @@ class SessionStore {
 
   Future<String> readBaseUrl() async {
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getString(_baseUrlKey) ??
-        (defaultTargetPlatform == TargetPlatform.android
-            ? 'http://10.0.2.2:8080'
-            : 'http://127.0.0.1:8080');
+    final stored = preferences.getString(_baseUrlKey);
+    if (stored != null && stored.isNotEmpty) return stored;
+    const configured = String.fromEnvironment('CESERV_API_BASE_URL');
+    if (configured.isNotEmpty) return configured;
+    return defaultTargetPlatform == TargetPlatform.android
+        ? 'http://10.0.2.2:8080'
+        : 'http://127.0.0.1:8080';
   }
 
   Future<void> saveBaseUrl(String value) async {

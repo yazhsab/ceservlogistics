@@ -16,9 +16,10 @@ import (
 // renderer needs is here, including the exact barcode and QR payload strings,
 // so no consumer has to reconstruct them from other fields and risk drift.
 type Label struct {
-	AWB             string `json:"awb"`
-	ShipmentID      string `json:"shipmentId"`
-	ReferenceNumber string `json:"referenceNumber,omitempty"`
+	AWB                 string `json:"awb"`
+	ShipmentID          string `json:"shipmentId"`
+	ReferenceNumber     string `json:"referenceNumber,omitempty"`
+	ManualWaybillNumber string `json:"manualWaybillNumber,omitempty"`
 
 	// BarcodePayload is the Code128 content: the AWB, nothing else, so a scan
 	// anywhere in the network yields a value the API accepts directly.
@@ -109,6 +110,9 @@ func buildLabel(d dbgen.GetShipmentLabelDataRow, packages []dbgen.ShipmentPackag
 	}
 	if d.ReferenceNumber != nil {
 		l.ReferenceNumber = *d.ReferenceNumber
+	}
+	if d.ManualWaybillNumber != nil {
+		l.ManualWaybillNumber = *d.ManualWaybillNumber
 	}
 	if d.SpecialInstructions != nil {
 		l.SpecialInstructions = *d.SpecialInstructions

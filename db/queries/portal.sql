@@ -163,7 +163,7 @@ LIMIT sqlc.arg('row_limit');
 -- ---------------------------------------------------------------------------
 
 -- name: ConsoleLookupBarcode :one
--- One parcel, by AWB or piece barcode, with only what a scanner shows.
+-- One parcel, by AWB, manual waybill or piece barcode, with only what a scanner shows.
 --
 -- Ten columns rather than the shipment's forty. The operator is looking at a
 -- 3-inch screen deciding where to put the box; the customer's email address and
@@ -180,7 +180,8 @@ LEFT JOIN operating_units cu ON cu.id = s.current_custody_unit_id
 LEFT JOIN shipment_address_snapshots ras
        ON ras.shipment_id = s.id AND ras.role = 'RECIPIENT'
 WHERE s.organization_id = $1
-  AND (s.awb = sqlc.arg('barcode')
+  AND (s.awb = upper(sqlc.arg('barcode'))
+       OR upper(s.manual_waybill_number) = upper(sqlc.arg('barcode'))
        OR EXISTS (SELECT 1 FROM shipment_packages sp
                    WHERE sp.shipment_id = s.id
                      AND sp.piece_barcode = sqlc.arg('barcode')));

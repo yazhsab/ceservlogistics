@@ -2491,6 +2491,8 @@ type Shipment struct {
 	PickedUpAt            *time.Time
 	IsHeld                bool
 	HoldReason            *string
+	// Globally unique number printed on a manually issued paper waybill; accepted as an alternate tracking and scan identifier.
+	ManualWaybillNumber *string
 }
 
 type ShipmentAddressCorrection struct {

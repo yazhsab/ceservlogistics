@@ -38,6 +38,7 @@ import {
 } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../components/ToastProvider";
+import { CameraBarcodeScanner } from "../components/CameraBarcodeScanner";
 import {
   CursorPager,
   EntityLink,
@@ -1752,15 +1753,23 @@ export function ScannerConsolePage() {
               </Field>
             ) : null}
             {availableModes.length ? (
-              <ScannerInput
-                ref={scannerRef}
-                value={barcode}
-                onChange={setBarcode}
-                onScan={(value) => mutation.mutate(value)}
-                busy={mutation.isPending}
-                label={`${titleCase(mode)} scan`}
-                hint={`Mode ${titleCase(mode)} · Enter submits · field refocuses after every response`}
-              />
+              <>
+                <ScannerInput
+                  ref={scannerRef}
+                  value={barcode}
+                  onChange={setBarcode}
+                  onScan={(value) => mutation.mutate(value)}
+                  busy={mutation.isPending}
+                  label={`${titleCase(mode)} scan`}
+                  hint={`Mode ${titleCase(mode)} · Enter submits · field refocuses after every response`}
+                />
+                <CameraBarcodeScanner
+                  disabled={mutation.isPending}
+                  onScan={(value) => {
+                    if (!mutation.isPending) mutation.mutate(value);
+                  }}
+                />
+              </>
             ) : (
               <InlineNotice title="Read-only scan history">
                 Your role can view recorded scans but cannot submit a scan.

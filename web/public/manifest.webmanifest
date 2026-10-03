@@ -1,0 +1,17 @@
+{
+  "name": "CESERV Courier OS",
+  "short_name": "CESERV",
+  "description": "CESERV shipment booking, scanning and courier operations",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#123f36",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

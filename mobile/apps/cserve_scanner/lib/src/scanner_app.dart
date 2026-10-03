@@ -81,7 +81,7 @@ class _ScannerAppState extends State<ScannerApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'CServe Scanner',
+    title: 'CESERV Scanner',
     debugShowCheckedModeBanner: false,
     theme: cserveTheme(),
     home: _loading
@@ -185,7 +185,7 @@ class _ScannerLoginScreenState extends State<_ScannerLoginScreen> {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'CServe Scanner',
+                    'CESERV Scanner',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -200,7 +200,7 @@ class _ScannerLoginScreenState extends State<_ScannerLoginScreen> {
                     keyboardType: TextInputType.url,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                      labelText: 'CServe server',
+                      labelText: 'CESERV server',
                       prefixIcon: Icon(Icons.dns_outlined),
                     ),
                     validator: (value) {

@@ -147,7 +147,7 @@ SET current_status = $1,
 WHERE id = $13
   AND organization_id = $14
   AND current_status = $15
-RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason
+RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number
 `
 
 type ApplyOperationalTransitionParams struct {
@@ -255,6 +255,7 @@ func (q *Queries) ApplyOperationalTransition(ctx context.Context, arg ApplyOpera
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
@@ -688,7 +689,7 @@ func (q *Queries) ListShipmentScans(ctx context.Context, arg ListShipmentScansPa
 }
 
 const lockShipmentByIDForUpdate = `-- name: LockShipmentByIDForUpdate :one
-SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason FROM shipments
+SELECT id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number FROM shipments
 WHERE id = $1 AND organization_id = $2
 FOR UPDATE
 `
@@ -759,6 +760,7 @@ func (q *Queries) LockShipmentByIDForUpdate(ctx context.Context, arg LockShipmen
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }
@@ -941,7 +943,8 @@ FROM shipments s
 LEFT JOIN shipment_packages p
        ON p.piece_barcode = $1 AND p.shipment_id = s.id
 WHERE s.organization_id = $2
-  AND (s.awb = $1
+  AND (s.awb = upper($1)
+       OR upper(s.manual_waybill_number) = upper($1)
        OR s.id = (SELECT shipment_id FROM shipment_packages
                    WHERE piece_barcode = $1 LIMIT 1))
 `
@@ -985,8 +988,7 @@ type ResolveScanBarcodeRow struct {
 // The scanner's hot path: turn a barcode into the shipment plus everything the
 // custody check needs, in one round trip.
 //
-// A barcode is either an AWB or a per-piece barcode. Both are UNIQUE, so the
-// lookup is two index probes at worst and returns at most one row.
+// A barcode is an AWB, manual paper-waybill number or per-piece barcode.
 func (q *Queries) ResolveScanBarcode(ctx context.Context, arg ResolveScanBarcodeParams) (ResolveScanBarcodeRow, error) {
 	row := q.db.QueryRow(ctx, resolveScanBarcode, arg.Barcode, arg.OrganizationID)
 	var i ResolveScanBarcodeRow
@@ -1033,7 +1035,7 @@ SET current_custody_unit_id = CASE WHEN $1::boolean
     current_trip_id = CASE WHEN $7::boolean
                            THEN $8 ELSE current_trip_id END
 WHERE id = $9 AND organization_id = $10
-RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason
+RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number
 `
 
 type SetShipmentCustodyParams struct {
@@ -1123,6 +1125,7 @@ func (q *Queries) SetShipmentCustody(ctx context.Context, arg SetShipmentCustody
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,6 +26,8 @@ import (
 	"github.com/ceserve/courier-os/internal/pricing"
 	"github.com/ceserve/courier-os/internal/tenant"
 )
+
+var manualWaybillPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/ -]{0,63}$`)
 
 // Handler exposes the shipment API.
 type Handler struct {
@@ -58,15 +61,16 @@ func (h *Handler) Routes(r chi.Router) {
 
 // Detail is the full shipment representation.
 type Detail struct {
-	ID              string    `json:"id"`
-	AWB             string    `json:"awb"`
-	ReferenceNumber string    `json:"referenceNumber,omitempty"`
-	Status          string    `json:"status"`
-	StatusChangedAt time.Time `json:"statusChangedAt"`
-	PaymentMode     string    `json:"paymentMode"`
-	BookedAt        time.Time `json:"bookedAt"`
-	CreatedAt       time.Time `json:"createdAt"`
-	Version         int32     `json:"version"`
+	ID                  string    `json:"id"`
+	AWB                 string    `json:"awb"`
+	ReferenceNumber     string    `json:"referenceNumber,omitempty"`
+	ManualWaybillNumber string    `json:"manualWaybillNumber,omitempty"`
+	Status              string    `json:"status"`
+	StatusChangedAt     time.Time `json:"statusChangedAt"`
+	PaymentMode         string    `json:"paymentMode"`
+	BookedAt            time.Time `json:"bookedAt"`
+	CreatedAt           time.Time `json:"createdAt"`
+	Version             int32     `json:"version"`
 
 	Customer Ref `json:"customer"`
 	Service  Ref `json:"service"`
@@ -247,6 +251,12 @@ func ValidateBooking(req *BookingRequest, maxPackages int) error {
 	req.SpecialInstructions = v.Text("specialInstructions", req.SpecialInstructions, 0, 1000, false)
 	if req.ReferenceNumber != "" {
 		req.ReferenceNumber = v.Text("referenceNumber", req.ReferenceNumber, 1, 64, false)
+	}
+	if req.ManualWaybillNumber != "" {
+		req.ManualWaybillNumber = v.Text("manualWaybillNumber", req.ManualWaybillNumber, 1, 64, false)
+		if !manualWaybillPattern.MatchString(req.ManualWaybillNumber) {
+			v.Add("manualWaybillNumber", "Use letters, numbers, spaces, '.', '_', ':', '/' or '-'.")
+		}
 	}
 	validateCommercial(v, req)
 	v.NonNegativeMinor("declaredValueMinor", req.DeclaredValueMinor)
@@ -433,7 +443,8 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) error {
 	for _, s := range rows {
 		items = append(items, map[string]any{
 			"id": s.PublicID, "awb": s.Awb, "referenceNumber": s.ReferenceNumber,
-			"status": s.CurrentStatus, "statusChangedAt": s.StatusChangedAt,
+			"manualWaybillNumber": s.ManualWaybillNumber,
+			"status":              s.CurrentStatus, "statusChangedAt": s.StatusChangedAt,
 			"paymentMode": s.PaymentMode, "pieceCount": s.PieceCount,
 			"chargeableWeightGrams": s.ChargeableWeightGrams, "currency": s.Currency,
 			"totalAmountMinor": s.TotalAmountMinor, "codAmountMinor": s.CodAmountMinor,
@@ -684,6 +695,9 @@ func (b *Booker) loadDetail(ctx context.Context, q *dbgen.Queries, s dbgen.GetSh
 	}
 	if s.ReferenceNumber != nil {
 		d.ReferenceNumber = *s.ReferenceNumber
+	}
+	if s.ManualWaybillNumber != nil {
+		d.ManualWaybillNumber = *s.ManualWaybillNumber
 	}
 	if s.SpecialInstructions != nil {
 		d.SpecialInstructions = *s.SpecialInstructions

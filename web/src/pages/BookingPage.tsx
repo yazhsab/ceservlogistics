@@ -9,12 +9,14 @@ import {
   ChevronRight,
   CircleDollarSign,
   Copy,
+  FileUp,
   MapPin,
   PackagePlus,
   Plus,
   Printer,
   Route,
   Search,
+  Save,
   ShieldCheck,
   Trash2,
   UserRound,
@@ -54,6 +56,7 @@ import {
   useCountries,
 } from "./BookingCommercialFields";
 import { insuranceRateLabel } from "../lib/insurance";
+import { saveOfflineBookingDraft } from "../lib/offlineBookings";
 import { useAuth } from "../auth/AuthProvider";
 import { CreateCustomerDialog } from "../components/CreateCustomerDialog";
 import { useToast } from "../components/ToastProvider";
@@ -138,6 +141,12 @@ const bookingSchema = z
     customs: customsFormSchema,
     customerId: z.string().min(1, "Choose a customer."),
     referenceNumber: z.string().max(64).optional(),
+    manualWaybillNumber: z
+      .string()
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:/ -]{0,63}$/, "Use letters, numbers, spaces, '.', '_', ':', '/' or '-'.")
+      .optional()
+      .or(z.literal("")),
     bookingUnitId: z.string().optional(),
     sender: addressSchema,
     recipient: addressSchema,
@@ -260,6 +269,7 @@ function createBookingRequest(values: BookingValues): BookingRequest {
     ...commercialRequest(values),
     customerId: values.customerId,
     referenceNumber: values.referenceNumber || undefined,
+    manualWaybillNumber: values.manualWaybillNumber || undefined,
     serviceCode: values.serviceCode,
     paymentMode: values.paymentMode,
     sender: cleanAddress(values.sender),
@@ -330,6 +340,7 @@ export default function BookingPage() {
   const [totalWeightInput, setTotalWeightInput] = useState("0.5");
   const [totalWeightEditing, setTotalWeightEditing] = useState(false);
   const [totalWeightError, setTotalWeightError] = useState("");
+  const [offlineDraftPending, setOfflineDraftPending] = useState(false);
   const {
     register,
     control,
@@ -347,6 +358,7 @@ export default function BookingPage() {
       ...commercialDefaults,
       customerId: "",
       referenceNumber: "",
+      manualWaybillNumber: "",
       sender: {
         countryCode: "NG",
         contactName: "",
@@ -594,6 +606,34 @@ export default function BookingPage() {
       }
     },
   });
+  const saveDraft = handleSubmit(async (values) => {
+    setOfflineDraftPending(true);
+    try {
+      await saveOfflineBookingDraft(createBookingRequest(values), {
+        source: "BOOKING_FORM",
+        insuranceAccepted:
+          Boolean(values.insuranceRequired) &&
+          Boolean(acceptedFingerprint) &&
+          acceptedFingerprint === preview?.quote.insurance?.quoteFingerprint,
+        idempotencyKey,
+      });
+      toast({
+        tone: "success",
+        title: "Encrypted draft saved",
+        description:
+          "Open Manual upload to validate and book it when connectivity is available.",
+      });
+      setIdempotencyKey(crypto.randomUUID());
+    } catch (error) {
+      toast({
+        tone: "error",
+        title: "Draft could not be saved",
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setOfflineDraftPending(false);
+    }
+  });
   const mutatePreview = previewMutation.mutate;
 
   useEffect(() => {
@@ -750,6 +790,12 @@ export default function BookingPage() {
                 <Calculator aria-hidden className="h-4 w-4" /> Price inquiry
               </Link>
             ) : null}
+            <Link
+              to="/shipments/manual-import"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <FileUp aria-hidden className="h-4 w-4" /> Manual upload
+            </Link>
             <div className="hidden text-right text-xs text-slate-500 sm:block">
               <kbd className="rounded border bg-white px-1.5 py-0.5">
                 ⌘ Enter
@@ -996,6 +1042,19 @@ export default function BookingPage() {
                       id="referenceNumber"
                       maxLength={64}
                       {...register("referenceNumber")}
+                    />
+                  </Field>
+                  <Field
+                    label="Manual waybill number"
+                    htmlFor="manualWaybillNumber"
+                    error={errors.manualWaybillNumber?.message}
+                    hint="Use the number on a handwritten paper waybill. It can be used for tracking and scanning after booking."
+                  >
+                    <Input
+                      id="manualWaybillNumber"
+                      maxLength={64}
+                      autoComplete="off"
+                      {...register("manualWaybillNumber")}
                     />
                   </Field>
                   <Field
@@ -1392,6 +1451,14 @@ export default function BookingPage() {
                 <PackagePlus aria-hidden className="h-4 w-4" /> Confirm & book
                 shipment
               </Button>
+              <Button
+                type="button"
+                className="w-full"
+                loading={offlineDraftPending}
+                onClick={() => void saveDraft()}
+              >
+                <Save aria-hidden className="h-4 w-4" /> Save encrypted draft
+              </Button>
               {bookingMutation.error ? (
                 <InlineNotice tone="danger" title="Booking not completed">
                   {submissionMessage || bookingMutation.error.message}
@@ -1440,6 +1507,15 @@ export default function BookingPage() {
                 Confirm & book
               </Button>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              className="mt-2 w-full"
+              loading={offlineDraftPending}
+              onClick={() => void saveDraft()}
+            >
+              <Save aria-hidden className="h-4 w-4" /> Save encrypted draft
+            </Button>
             {bookingMutation.error ? (
               <p role="alert" className="mt-2 text-xs text-danger">
                 {submissionMessage || bookingMutation.error.message}

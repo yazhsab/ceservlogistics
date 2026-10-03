@@ -1,0 +1,43 @@
+name: Mobile scanner
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-scanner.yml"
+  push:
+    branches: [main]
+    tags: ["scanner-v*"]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile-scanner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/apps/cserve_scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Build unsigned release APK
+        run: >-
+          flutter build apk --release
+          --dart-define=CESERV_API_BASE_URL=${{ vars.CESERV_API_BASE_URL || 'https://ceservlogistics.com' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ceserv-scanner-unsigned-${{ github.sha }}
+          path: mobile/apps/cserve_scanner/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

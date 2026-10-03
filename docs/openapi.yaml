@@ -10576,6 +10576,12 @@ components:
             Your own reference. Unique per customer among non-cancelled
             shipments, which makes a duplicate submission detectable even
             without an Idempotency-Key.
+        manualWaybillNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:/ -]{0,63}$'
+          description: Globally unique number printed on a manually issued paper waybill. It is accepted as an alternate tracking and scanning identifier while CESERV retains its own AWB.
         serviceCode: { type: string }
         paymentMode: { $ref: "#/components/schemas/PaymentMode" }
         sender: { $ref: "#/components/schemas/BookingAddress" }
@@ -10703,6 +10709,7 @@ components:
         id: { type: string }
         awb: { type: string }
         referenceNumber: { type: string }
+        manualWaybillNumber: { type: string }
         status: { $ref: "#/components/schemas/ShipmentStatus" }
         statusChangedAt: { type: string, format: date-time }
         paymentMode: { $ref: "#/components/schemas/PaymentMode" }
@@ -10741,6 +10748,7 @@ components:
           description: "Tenant prefix, YYMMDD, then a six-digit daily sequence."
           examples: ["CSV260808000001"]
         referenceNumber: { type: string }
+        manualWaybillNumber: { type: string }
         status: { $ref: "#/components/schemas/ShipmentStatus" }
         statusChangedAt: { type: string, format: date-time }
         paymentMode: { $ref: "#/components/schemas/PaymentMode" }
@@ -10864,6 +10872,7 @@ components:
         awb: { type: string }
         shipmentId: { type: string }
         referenceNumber: { type: string }
+        manualWaybillNumber: { type: string }
         barcodePayload: { type: string, description: The AWB. Encode as Code128. }
         barcodeFormat: { type: string, const: CODE128 }
         qrPayload:

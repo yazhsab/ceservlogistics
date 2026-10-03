@@ -32,6 +32,21 @@ func TestValidAWB(t *testing.T) {
 	}
 }
 
+func TestValidTrackingIdentifierAcceptsManualWaybillAliases(t *testing.T) {
+	valid := []string{"CSV260808000001", "MANUAL-PORT-00042", "BR/2026/10/003", "PAPER 1001", "A"}
+	for _, value := range valid {
+		if !ValidTrackingIdentifier(value) {
+			t.Errorf("expected %q to be a valid tracking identifier", value)
+		}
+	}
+	invalid := []string{"", "<script>", "manual-001", strings.Repeat("X", 65)}
+	for _, value := range invalid {
+		if ValidTrackingIdentifier(value) {
+			t.Errorf("expected %q to be rejected", value)
+		}
+	}
+}
+
 func TestPieceBarcodeDerivesFromAWB(t *testing.T) {
 	awb := "CSV260808000042"
 	got := PieceBarcode(awb, 3)

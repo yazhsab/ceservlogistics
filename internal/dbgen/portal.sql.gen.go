@@ -127,7 +127,8 @@ LEFT JOIN operating_units cu ON cu.id = s.current_custody_unit_id
 LEFT JOIN shipment_address_snapshots ras
        ON ras.shipment_id = s.id AND ras.role = 'RECIPIENT'
 WHERE s.organization_id = $1
-  AND (s.awb = $2
+  AND (s.awb = upper($2)
+       OR upper(s.manual_waybill_number) = upper($2)
        OR EXISTS (SELECT 1 FROM shipment_packages sp
                    WHERE sp.shipment_id = s.id
                      AND sp.piece_barcode = $2))
@@ -135,7 +136,7 @@ WHERE s.organization_id = $1
 
 type ConsoleLookupBarcodeParams struct {
 	OrganizationID int64
-	Barcode        string
+	Barcode        interface{}
 }
 
 type ConsoleLookupBarcodeRow struct {
@@ -161,7 +162,7 @@ type ConsoleLookupBarcodeRow struct {
 // Deliberately thin. A handheld scanner over a branch's mobile connection is
 // the worst network in the system, and these are the queries it runs most.
 // ---------------------------------------------------------------------------
-// One parcel, by AWB or piece barcode, with only what a scanner shows.
+// One parcel, by AWB, manual waybill or piece barcode, with only what a scanner shows.
 //
 // Ten columns rather than the shipment's forty. The operator is looking at a
 // 3-inch screen deciding where to put the box; the customer's email address and

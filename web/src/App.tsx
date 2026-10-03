@@ -121,6 +121,9 @@ const CustomerDetailPage = lazy(() =>
   })),
 );
 const BookingPage = lazy(() => import("./pages/BookingPage"));
+const ManualShipmentImportPage = lazy(
+  () => import("./pages/ManualShipmentImportPage"),
+);
 const ShipmentsPage = lazy(() =>
   import("./pages/ShipmentPages").then((module) => ({
     default: module.ShipmentsPage,
@@ -544,6 +547,14 @@ export default function App() {
             element={
               <Permission permission="shipment.create">
                 <BookingPage />
+              </Permission>
+            }
+          />
+          <Route
+            path="shipments/manual-import"
+            element={
+              <Permission permission="shipment.create">
+                <ManualShipmentImportPage />
               </Permission>
             }
           />

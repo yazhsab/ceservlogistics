@@ -10379,6 +10379,8 @@ export interface components {
        *     without an Idempotency-Key.
        */
       referenceNumber?: string;
+      /** @description Globally unique number printed on a manually issued paper waybill. It is accepted as an alternate tracking and scanning identifier while CESERV retains its own AWB. */
+      manualWaybillNumber?: string;
       serviceCode: string;
       paymentMode: components["schemas"]["PaymentMode"];
       sender: components["schemas"]["BookingAddress"];
@@ -10457,6 +10459,7 @@ export interface components {
       id?: string;
       awb?: string;
       referenceNumber?: string;
+      manualWaybillNumber?: string;
       status?: components["schemas"]["ShipmentStatus"];
       /** Format: date-time */
       statusChangedAt?: string;
@@ -10495,6 +10498,7 @@ export interface components {
        */
       awb?: string;
       referenceNumber?: string;
+      manualWaybillNumber?: string;
       status?: components["schemas"]["ShipmentStatus"];
       /** Format: date-time */
       statusChangedAt?: string;
@@ -10630,6 +10634,7 @@ export interface components {
       awb?: string;
       shipmentId?: string;
       referenceNumber?: string;
+      manualWaybillNumber?: string;
       /** @description The AWB. Encode as Code128. */
       barcodePayload?: string;
       /** @constant */

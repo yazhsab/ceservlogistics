@@ -23,9 +23,16 @@ const (
 )
 
 var awbPattern = regexp.MustCompile(`^[A-Z]{2,4}[0-9]{6}[0-9]{6}$`)
+var trackingIdentifierPattern = regexp.MustCompile(`^[A-Z0-9][A-Z0-9._:/ -]{0,63}$`)
 
 // ValidAWB reports whether a string has the AWB shape.
 func ValidAWB(awb string) bool { return awbPattern.MatchString(awb) }
+
+// ValidTrackingIdentifier accepts either a CESERV AWB or a manual paper
+// waybill alias. Database uniqueness keeps public lookup unambiguous.
+func ValidTrackingIdentifier(value string) bool {
+	return awbPattern.MatchString(value) || trackingIdentifierPattern.MatchString(value)
+}
 
 // Allocator issues AWB numbers.
 //

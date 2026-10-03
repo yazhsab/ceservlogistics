@@ -68,6 +68,7 @@ type BookingRequest struct {
 	Billing             *BillingInstructions `json:"billing,omitempty"`
 	CustomerID          string               `json:"customerId"`
 	ReferenceNumber     string               `json:"referenceNumber,omitempty"`
+	ManualWaybillNumber string               `json:"manualWaybillNumber,omitempty"`
 	ServiceCode         string               `json:"serviceCode"`
 	PaymentMode         string               `json:"paymentMode"`
 	Sender              Address              `json:"sender"`
@@ -209,6 +210,10 @@ func (b *Booker) Commit(ctx context.Context, tx pgx.Tx, prepared *Prepared) (*De
 			return nil, apierr.Conflict(apierr.CodeDuplicate,
 				"A shipment already exists for this customer reference.").
 				WithDetail("referenceNumber", prep.request.ReferenceNumber)
+		case database.IsUniqueViolation(err, "shipments_manual_waybill_uq"):
+			return nil, apierr.Conflict(apierr.CodeDuplicate,
+				"This manual waybill number is already linked to another shipment.").
+				WithDetail("manualWaybillNumber", prep.request.ManualWaybillNumber)
 		}
 		return nil, apierr.Internal(fmt.Errorf("create shipment: %w", err))
 	}
@@ -548,6 +553,9 @@ func (b *Booker) buildShipmentParams(prep *prepared, publicID, awb string) (*dbg
 	}
 	if prep.request.ReferenceNumber != "" {
 		params.ReferenceNumber = &prep.request.ReferenceNumber
+	}
+	if prep.request.ManualWaybillNumber != "" {
+		params.ManualWaybillNumber = &prep.request.ManualWaybillNumber
 	}
 	return params, nil
 }

@@ -20,7 +20,7 @@ WHERE id = $5
   AND organization_id = $6
   AND current_status = 'BOOKED'
   AND version = $7
-RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason
+RETURNING id, public_id, organization_id, awb, reference_number, customer_id, courier_service_id, booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at, event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id, route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination, current_custody_unit_id, current_custody_user_id, piece_count, actual_weight_grams, volumetric_weight_grams, chargeable_weight_grams, currency, declared_value_minor, cod_amount_minor, insurance_required, total_amount_minor, sla_hours, promised_delivery_at, booked_at, content_description, special_instructions, is_fragile, is_dangerous_goods, cancelled_at, cancelled_by, cancellation_reason, metadata, created_at, updated_at, version, current_bag_id, current_trip_id, movement_direction, delivery_attempt_count, pickup_attempt_count, first_ofd_at, delivered_at, picked_up_at, is_held, hold_reason, manual_waybill_number
 `
 
 type CorrectBookedShipmentParams struct {
@@ -102,6 +102,7 @@ func (q *Queries) CorrectBookedShipment(ctx context.Context, arg CorrectBookedSh
 		&i.PickedUpAt,
 		&i.IsHeld,
 		&i.HoldReason,
+		&i.ManualWaybillNumber,
 	)
 	return i, err
 }

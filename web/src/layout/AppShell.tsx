@@ -15,6 +15,7 @@ import {
   FileCheck2,
   FileStack,
   FileBarChart2,
+  FileUp,
   LogOut,
   Map,
   MapPinned,
@@ -82,6 +83,12 @@ const navigation: NavigationGroup[] = [
         label: "New booking",
         to: "/shipments/new",
         icon: Plus,
+        permission: "shipment.create",
+      },
+      {
+        label: "Manual upload",
+        to: "/shipments/manual-import",
+        icon: FileUp,
         permission: "shipment.create",
       },
       {

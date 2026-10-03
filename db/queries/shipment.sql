@@ -24,7 +24,7 @@ RETURNING current_value, max_value;
 
 -- name: CreateShipment :one
 INSERT INTO shipments (
-    public_id, organization_id, awb, reference_number, customer_id, courier_service_id,
+    public_id, organization_id, awb, reference_number, manual_waybill_number, customer_id, courier_service_id,
     booked_by_user_id, booking_unit_id, payment_mode, current_status, status_changed_at,
     event_sequence, origin_branch_id, origin_hub_id, destination_hub_id, destination_branch_id,
     route_definition_id, origin_pincode, destination_pincode, is_remote_origin, is_remote_destination,
@@ -33,8 +33,8 @@ INSERT INTO shipments (
     total_amount_minor, sla_hours, promised_delivery_at, booked_at,
     content_description, special_instructions, is_fragile, is_dangerous_goods, metadata
 ) VALUES (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,'BOOKED',now(),1,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-    $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'BOOKED',now(),1,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+    $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
 )
 RETURNING *;
 
@@ -146,7 +146,7 @@ RETURNING *;
 -- plan on shipments_org_created_idx no matter how deep the caller pages, unlike
 -- OFFSET which degrades linearly.
 -- name: ListShipments :many
-SELECT s.id, s.public_id, s.awb, s.reference_number, s.current_status, s.status_changed_at,
+SELECT s.id, s.public_id, s.awb, s.reference_number, s.manual_waybill_number, s.current_status, s.status_changed_at,
        s.payment_mode, s.piece_count, s.chargeable_weight_grams, s.currency,
        s.total_amount_minor, s.cod_amount_minor, s.origin_pincode, s.destination_pincode,
        s.promised_delivery_at, s.booked_at, s.created_at,
@@ -178,7 +178,8 @@ WHERE s.organization_id = sqlc.arg('organization_id')
   AND (sqlc.narg('destination_pincode')::text IS NULL OR s.destination_pincode = sqlc.narg('destination_pincode'))
   AND (sqlc.narg('search')::text IS NULL
        OR s.awb LIKE upper(sqlc.narg('search')) || '%'
-       OR s.reference_number = sqlc.narg('search'))
+       OR s.reference_number = sqlc.narg('search')
+       OR upper(s.manual_waybill_number) = upper(sqlc.narg('search')))
   AND (sqlc.narg('scoped_unit_ids')::bigint[] IS NULL
        OR s.origin_branch_id = ANY(sqlc.narg('scoped_unit_ids')::bigint[])
        OR s.destination_branch_id = ANY(sqlc.narg('scoped_unit_ids')::bigint[])
@@ -213,7 +214,7 @@ LIMIT sqlc.arg('row_limit') OFFSET sqlc.arg('row_offset');
 -- GetShipmentLabelData assembles everything a label needs in one round trip:
 -- the shipment, both address snapshots and the resolved routing codes.
 -- name: GetShipmentLabelData :one
-SELECT s.public_id, s.awb, s.reference_number, s.current_status, s.payment_mode,
+SELECT s.public_id, s.awb, s.reference_number, s.manual_waybill_number, s.current_status, s.payment_mode,
        s.piece_count, s.actual_weight_grams, s.chargeable_weight_grams, s.currency,
        s.cod_amount_minor, s.declared_value_minor, s.total_amount_minor,
        s.origin_pincode, s.destination_pincode, s.booked_at, s.promised_delivery_at,

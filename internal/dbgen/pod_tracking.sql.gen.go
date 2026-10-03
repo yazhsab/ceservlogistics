@@ -432,7 +432,8 @@ LEFT JOIN pincodes op ON op.code = s.origin_pincode AND op.country_id = ctry.id
 LEFT JOIN cities origin_city ON origin_city.id = op.city_id
 LEFT JOIN pincodes dp ON dp.code = s.destination_pincode AND dp.country_id = ctry.id
 LEFT JOIN cities dest_city ON dest_city.id = dp.city_id
-WHERE s.awb = $1
+WHERE s.awb = upper($1)
+   OR upper(s.manual_waybill_number) = upper($1)
 `
 
 type GetPublicTrackingShipmentRow struct {
@@ -468,7 +469,7 @@ type GetPublicTrackingShipmentRow struct {
 // City names come through the PIN code, which is keyed by country. The
 // platform is single-country per deployment (§M03), so the join resolves the
 // country by its ISO code rather than assuming an id.
-func (q *Queries) GetPublicTrackingShipment(ctx context.Context, awb string) (GetPublicTrackingShipmentRow, error) {
+func (q *Queries) GetPublicTrackingShipment(ctx context.Context, awb interface{}) (GetPublicTrackingShipmentRow, error) {
 	row := q.db.QueryRow(ctx, getPublicTrackingShipment, awb)
 	var i GetPublicTrackingShipmentRow
 	err := row.Scan(

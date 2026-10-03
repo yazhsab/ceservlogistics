@@ -128,7 +128,7 @@ export function ShipmentsPage() {
       <PageHeader
         eyebrow="Operations"
         title="Shipments"
-        description="Search by AWB or reference, filter operational state, and open the immutable booking record."
+        description="Search by CESERV AWB, manual waybill or reference, filter operational state, and open the immutable booking record."
         actions={
           hasPermission("shipment.create") ? (
             <Button
@@ -243,7 +243,9 @@ export function ShipmentsPage() {
                         {shipment.awb}
                       </Link>
                       <span className="mt-0.5 block text-xs text-slate-500">
-                        {shipment.referenceNumber || "No reference"}
+                        {shipment.manualWaybillNumber
+                          ? `Manual ${shipment.manualWaybillNumber}`
+                          : shipment.referenceNumber || "No reference"}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -419,7 +421,7 @@ export function ShipmentDetailPage() {
       <PageHeader
         eyebrow="Operations / Shipments"
         title={shipment.awb ?? "Shipment"}
-        description={`${shipment.referenceNumber ? `Reference ${shipment.referenceNumber} · ` : ""}${shipment.customer?.code} · ${shipment.customer?.name}`}
+        description={`${shipment.manualWaybillNumber ? `Manual waybill ${shipment.manualWaybillNumber} · ` : ""}${shipment.referenceNumber ? `Reference ${shipment.referenceNumber} · ` : ""}${shipment.customer?.code} · ${shipment.customer?.name}`}
         actions={
           <>
             <StatusBadge status={shipment.status} />
@@ -2030,6 +2032,12 @@ function PieceShippingLabel({
               <span>Reference: {label.referenceNumber}</span>
             </>
           ) : null}
+          {label.manualWaybillNumber ? (
+            <>
+              <br />
+              <span>Manual waybill: {label.manualWaybillNumber}</span>
+            </>
+          ) : null}
         </div>
       </div>
       <div className="label-barcode py-2 text-center">
@@ -2148,7 +2156,10 @@ function CustomerShipmentCopy({ label }: { label: Label }) {
           {label.referenceNumber ? (
             <p>Reference: {label.referenceNumber}</p>
           ) : null}
-          <p>Track this shipment using the AWB above.</p>
+          {label.manualWaybillNumber ? (
+            <p>Manual waybill: {label.manualWaybillNumber}</p>
+          ) : null}
+          <p>Track this shipment using the CESERV AWB or manual waybill number.</p>
           <p>This customer copy is not a tax invoice.</p>
         </div>
         {label.barcodePayload ? (

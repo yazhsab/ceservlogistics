@@ -140,7 +140,8 @@ LEFT JOIN pincodes op ON op.code = s.origin_pincode AND op.country_id = ctry.id
 LEFT JOIN cities origin_city ON origin_city.id = op.city_id
 LEFT JOIN pincodes dp ON dp.code = s.destination_pincode AND dp.country_id = ctry.id
 LEFT JOIN cities dest_city ON dest_city.id = dp.city_id
-WHERE s.awb = sqlc.arg('awb');
+WHERE s.awb = upper(sqlc.arg('awb'))
+   OR upper(s.manual_waybill_number) = upper(sqlc.arg('awb'));
 
 -- name: ListPublicTrackingEvents :many
 -- The customer-facing timeline. internal_remarks, actor identity and reason

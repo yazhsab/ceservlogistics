@@ -108,7 +108,7 @@ func NewService(q *dbgen.Queries, c *cache.Cache, log *slog.Logger, m *telemetry
 // anywhere else — plus aggressive rate limiting on the route.
 func (s *Service) Track(ctx context.Context, awb string) (*Result, error) {
 	normalized := normalizeAWB(awb)
-	if !shipment.ValidAWB(normalized) {
+	if !shipment.ValidTrackingIdentifier(normalized) {
 		// Deliberately the same answer as a real miss, so the endpoint cannot be
 		// used to learn which AWB formats a tenant uses.
 		return nil, notFound()
