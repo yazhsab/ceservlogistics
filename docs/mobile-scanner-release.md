@@ -16,7 +16,7 @@ numbers are accepted by the same scan endpoint.
 
    ```bash
    cd mobile/apps/cserve_scanner
-   CESERV_API_BASE_URL=https://ceservlogistics.com ./tool/build_release.sh
+   CESERV_API_BASE_URL=https://api.ceservlogistics.com ./tool/build_release.sh
    ```
 
 5. Distribute the generated APK through the approved internal channel or upload
@@ -25,6 +25,10 @@ numbers are accepted by the same scan endpoint.
 The GitHub workflow validates every mobile change and produces an unsigned APK
 for QA. Store signing secrets in the release environment before converting that
 job into a production publishing job.
+
+The signed Android 1.1.1 package is distributed from
+`https://app.ceservlogistics.com/downloads/ceserv-scanner-1.1.1.apk`. Android
+users may need to allow installation from their browser or managed file app.
 
 ## iPhone and iPad
 

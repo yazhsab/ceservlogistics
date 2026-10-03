@@ -34,6 +34,17 @@ no network coverage.
 - Keep the Android signing keystore in the organizational credential vault. The
   same key is required for every future app update.
 
+## Production rollout
+
+- Web/API/worker release: `79fa083`
+- Database migration: `0044_manual_waybills`
+- Android scanner: version `1.1.1+3`, configured for
+  `https://api.ceservlogistics.com`
+- Android download:
+  `https://app.ceservlogistics.com/downloads/ceserv-scanner-1.1.1.apk`
+- Signed APK SHA-256:
+  `ea5d816394fb5ed684aec2a2709313d90aae559101b8881c66648e9ec3f32f10`
+
 ## Validation evidence
 
 - `go test ./...`

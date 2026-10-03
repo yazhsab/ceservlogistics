@@ -34,7 +34,7 @@ jobs:
       - name: Build unsigned release APK
         run: >-
           flutter build apk --release
-          --dart-define=CESERV_API_BASE_URL=${{ vars.CESERV_API_BASE_URL || 'https://ceservlogistics.com' }}
+          --dart-define=CESERV_API_BASE_URL=${{ vars.CESERV_API_BASE_URL || 'https://api.ceservlogistics.com' }}
       - uses: actions/upload-artifact@v4
         with:
           name: ceserv-scanner-unsigned-${{ github.sha }}
